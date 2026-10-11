@@ -13,7 +13,7 @@ cp .env.example .env      # then open .env and fill it in
 node server.js
 ```
 
-Open http://localhost:8787 and sign in. The development sign-in is the `WORKBENCH_USERS` line in `.env.example`.
+Open http://localhost:8787 and sign in with name `admin` and password `admin`. Change that with `WORKBENCH_USERS` in `.env` before anyone else can reach the server.
 
 An Arcade key is optional in `.env`. With one, everyone who signs in can use it. Without one, each person adds their own under Models and keys. Create a key in [Arcade Studio](https://studio.arcade.ai/settings/api-keys) under Settings, API keys.
 

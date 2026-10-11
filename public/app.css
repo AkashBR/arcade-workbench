@@ -58,7 +58,6 @@ body.signin { display: grid; place-items: center; overflow: auto; background-col
 .signin-card h1 { font: 700 19px/1.2 var(--display); margin: 0 0 12px; }
 .signin-card .swap { margin: 14px 0 0; font-size: 13px; color: var(--ink-2); }
 .signin-card .swap button { border: 0; background: none; color: var(--wire); padding: 0; cursor: pointer; text-decoration: underline; font-size: 13px; }
-.signin-card .dev { margin: 14px 0 0; padding: 10px 12px; background: var(--hold-soft); color: var(--hold); border-radius: 8px; font-size: 12.5px; }
 
 /* ---------- runs ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }

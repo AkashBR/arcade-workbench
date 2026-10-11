@@ -21,7 +21,6 @@
     <button class="btn wire" id="submit" type="submit">Sign in</button>
   </form>
   <p class="swap" id="swap"><span id="swapText">New here?</span> <button type="button" id="swapBtn">Create an account</button></p>
-  <p class="dev" id="dev" hidden>This server is using its development sign-in. The name and password are in <code>.env.example</code> under <code>WORKBENCH_USERS</code>. Change it before anyone else can reach this server.</p>
 </main>
 <script>
 (function () {
@@ -51,7 +50,7 @@
       $('msg').hidden = false;
     } finally { $('submit').disabled = false; }
   };
-  fetch('/api/health').then((r) => r.json()).then((h) => { $('swap').hidden = !h.signup; $('dev').hidden = !h.devLogin; }).catch(() => {});
+  fetch('/api/health').then((r) => r.json()).then((h) => { $('swap').hidden = !h.signup; }).catch(() => {});
   // Already signed in: go straight to the bench.
   fetch('/api/me').then((r) => { if (r.ok) location.href = '/'; }).catch(() => {});
 })();

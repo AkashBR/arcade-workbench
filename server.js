@@ -312,7 +312,7 @@ on('POST', '/api/data/connect', ({ user, body }) => {
   return { ...store.info(), note: 'Connected. Everyone signs in again, because accounts live in the database.' };
 });
 
-function seedAccounts() { store.seedUsers(process.env.WORKBENCH_USERS || 'admin:demo'); }
+function seedAccounts() { store.seedUsers(process.env.WORKBENCH_USERS || 'admin:admin'); }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -361,5 +361,5 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`Workbench running at http://localhost:${PORT}`);
   console.log(`Database: ${store.info().path}`);
   console.log(HOST_KEY ? `Arcade key loaded from the environment${SHARE_HOST_KEYS ? ', shared with everyone who signs in.' : ', not shared.'}` : 'No ARCADE_API_KEY in the environment: people add their own key after signing in.');
-  if (DEV_LOGIN) console.log('Using the development sign-in from .env.example. Set WORKBENCH_USERS before letting anyone else reach this server.');
+  if (DEV_LOGIN) console.log('Using the default sign-in (admin / admin). Set WORKBENCH_USERS before letting anyone else reach this server.');
 });
