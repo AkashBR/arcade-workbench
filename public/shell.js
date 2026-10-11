@@ -21,6 +21,7 @@
     out: '<path d="M10 5H5v14h5"/><path d="M14 8l4 4-4 4M18 12H9"/>',
     flow: '<circle cx="6" cy="12" r="2.500"/><circle cx="18" cy="12" r="2.500"/><path d="M8.500 12h7"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    pencil: '<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>',
   };
   const ITEMS = [
     { id: 'flows', label: 'Flows', sub: true },
@@ -101,16 +102,50 @@
     const cur = wb.S.flow.id, flows = wb.S.flows.slice();
     if (cur && !flows.some((f) => f.id === cur)) flows.unshift({ id: cur, name: wb.S.flow.name || 'Untitled flow' });
     const glyph = (t) => (window.ArcadeNodes ? svg(window.ArcadeNodes.ICONS[window.ArcadeNodes.glyphKey(t.thumb || '')] || ICON.flow) : svg(ICON.flow));
+    // New things first, then the files, then your own flows last: that list grows, so it gets the open end of the menu.
+    const row = (f) => {
+      const open = f.id === cur, name = open ? wb.S.flow.name || f.name : f.name;
+      if (renaming === f.id) return `<form class="sub-rename" data-rename="${esc(f.id)}"><input type="text" value="${esc(name)}" maxlength="60" aria-label="New name for this flow"><button type="submit" class="btn small">Save</button><button type="button" class="btn ghost small" data-act="rename-cancel">Cancel</button></form>`;
+      return `<div class="sub-flow"${open ? ' aria-current="true"' : ''}><button type="button" class="sub-row" data-open="${esc(f.id)}"${open ? ' aria-current="true"' : ''}><i>${svg(ICON.flow)}</i><span><b>${esc(name)}</b><small>${open ? `Open now · ${wb.S.flow.nodes.length} step${wb.S.flow.nodes.length === 1 ? '' : 's'}` : f.updatedAt ? `Saved ${when(f.updatedAt)}` : 'Click to open'}</small></span></button><button type="button" class="sub-icon" data-act="rename" data-id="${esc(f.id)}" aria-label="Rename ${esc(name)}" title="Rename">${svg(ICON.pencil)}</button></div>`;
+    };
     box.innerHTML = `<div class="sub-head"><b>Flows</b><button class="p-close" data-act="close" aria-label="Close this menu">×</button></div>
       <button type="button" class="sub-row new" data-act="new"><i>${svg(ICON.plus)}</i><span><b>New flow</b><small>Start with a blank bench</small></span></button>
-      <div class="sub-label">Your flows</div>
-      ${flows.map((f) => `<button type="button" class="sub-row" data-open="${esc(f.id)}"${f.id === cur ? ' aria-current="true"' : ''}><i>${svg(ICON.flow)}</i><span><b>${esc(f.id === cur ? wb.S.flow.name || f.name : f.name)}</b><small>${f.id === cur ? `Open now · ${wb.S.flow.nodes.length} step${wb.S.flow.nodes.length === 1 ? '' : 's'}` : f.updatedAt ? `Saved ${when(f.updatedAt)}` : 'Click to open'}</small></span></button>`).join('')}
-      <div class="sub-acts"><button type="button" class="btn ghost small" data-act="dup">Duplicate this flow</button><button type="button" class="btn ghost small" data-act="del">Delete it</button></div>
       <div class="sub-label">Start from a workflow</div>
       ${wb.TEMPLATES.map((t) => `<button type="button" class="sub-row" data-tpl="${esc(t.id)}"><i>${glyph(t)}</i><span><b>${esc(t.title || t.name)}</b><small>${esc(t.blurb || '')}</small></span></button>`).join('')}
       <div class="sub-label">Files</div>
-      <div class="sub-acts"><button type="button" class="btn ghost small" data-act="export">Export as JSON</button><button type="button" class="btn ghost small" data-act="import">Import JSON</button></div>`;
+      <div class="sub-acts"><button type="button" class="btn ghost small" data-act="export">Export as JSON</button><button type="button" class="btn ghost small" data-act="import">Import JSON</button></div>
+      <div class="sub-label">Your flows (${flows.length})</div>
+      ${flows.map(row).join('')}
+      <div class="sub-acts"><button type="button" class="btn ghost small" data-act="dup">Duplicate the open flow</button><button type="button" class="btn ghost small" data-act="del">Delete it</button></div>`;
+    const input = box.querySelector('.sub-rename input');
+    if (input) { input.focus(); input.select(); }
   }
+  let renaming = null;
+  // A flow's name lives in two places: the open flow's own state, and the saved copy on the server.
+  async function renameFlow(id, name) {
+    const wb = WB(), clean = name.trim().slice(0, 60);
+    if (!clean) return;
+    if (id === wb.S.flow.id) {
+      wb.S.flow.name = clean;
+      const top = document.getElementById('flowName');
+      if (top) top.value = clean;
+      await wb.saveNow();
+    } else {
+      const saved = await window.App.api('flows/' + id);
+      await window.App.api('flows/' + id, { method: 'PUT', body: { name: clean, data: saved.data } });
+    }
+    const known = wb.S.flows.find((f) => f.id === id);
+    if (known) known.name = clean;
+  }
+  sub.addEventListener('submit', async (e) => {
+    const form = e.target.closest('.sub-rename');
+    if (!form) return;
+    e.preventDefault();
+    try { await renameFlow(form.dataset.rename, form.querySelector('input').value); } catch (err) { if (window.App) window.App.toast(err.message); }
+    renaming = null;
+    drawFlows();
+  });
+  sub.addEventListener('keydown', (e) => { if (e.key === 'Escape' && renaming) { e.stopPropagation(); renaming = null; drawFlows(); } });
   sub.addEventListener('click', async (e) => {
     const t = e.target.closest('#subFlows button');
     const wb = WB();
@@ -118,6 +153,9 @@
     const d = t.dataset;
     try {
       if (d.act === 'close') return setSub(null);
+      if (d.act === 'rename') { renaming = d.id; return drawFlows(); }
+      if (d.act === 'rename-cancel') { renaming = null; return drawFlows(); }
+      if (t.type === 'submit') return; // the rename form saves itself
       if (d.open) { if (d.open !== wb.S.flow.id) { await wb.saveNow(); await wb.openFlow(d.open); } return drawFlows(); }
       if (d.act === 'new') { await wb.saveNow(); wb.setFlow(blank()); await wb.saveNow(); return setSub(null); }
       if (d.tpl) {

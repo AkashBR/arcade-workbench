@@ -28,6 +28,16 @@ body.has-menu > .nav, body.has-menu #templates { display: none; }
 .sub-row b { display: block; font: 500 13.500px/18px var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-row small { display: block; font-size: 12px; line-height: 16px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-acts { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 6px 0; }
+/* one of your flows: the row opens it, the pencil renames it */
+.sub-flow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-radius: 10px; }
+.sub-flow[aria-current="true"] { background: var(--stone, var(--panel)); }
+.sub-flow .sub-row[aria-current="true"] { background: transparent; }
+.sub-icon { border: 0; background: transparent; width: 30px; height: 30px; margin-right: 4px; border-radius: 8px; display: grid; place-items: center; color: var(--ink-3); cursor: pointer; }
+.sub-icon:hover { background: var(--paper); color: var(--ink); }
+.sub-icon .ic { width: 16px; height: 16px; }
+.sub-rename { display: flex; gap: 6px; align-items: center; padding: 6px; flex-wrap: wrap; }
+.sub-rename input { flex: 1; min-width: 120px; height: 32px; border: 1px solid var(--ink); border-radius: 8px; padding: 0 10px; font: 500 13.500px/18px var(--body); background: var(--paper); }
+.sub-rename input:focus { outline: none; box-shadow: 0 0 0 3px var(--citron); }
 
 /* The step list, now living in the sub-menu. */
 .msub .palette { display: block !important; width: auto !important; border: 0; padding: 0; background: transparent; overflow: visible; }
