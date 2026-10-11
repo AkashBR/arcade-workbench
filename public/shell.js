@@ -212,6 +212,50 @@
   if (shell) new MutationObserver(() => { if (innerWidth <= 1020 && WB()) requestAnimationFrame(WB().fit); }).observe(shell, { attributes: true, attributeFilter: ['data-panel'] });
   if (shell) new MutationObserver(() => { const want = shell.dataset.palette === 'open'; if (want && open !== 'steps') setSub('steps'); else if (!want && open === 'steps') setSub(null); }).observe(shell, { attributes: true, attributeFilter: ['data-palette'] });
 
+  // ---------- colour picker on "Colors" fields ----------
+  // Arcade takes up to ten colours as hex codes. Typing them is fiddly, so any Colors field in a step's panel
+  // gets a picker under it: pick a colour, add it, and it is written into the field as its hex code.
+  // The text field stays the source of truth, so names Arcade also accepts (palette or Pantone tokens) still work.
+  const MAX_COLORS = 10;
+  const isHex = (t) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(t);
+  const tokens = (v) => String(v || '').split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+  function colorPicker(wrap) {
+    const input = wrap.querySelector('input[type="text"]');
+    if (!input || wrap.dataset.picker) return;
+    wrap.dataset.picker = '1';
+    const box = document.createElement('div');
+    box.className = 'cpick';
+    wrap.after(box);
+    let pick = '#2447D6';
+    const write = (list) => { input.value = list.join(', '); input.dispatchEvent(new Event('input', { bubbles: true })); draw(); };
+    function draw() {
+      const list = tokens(input.value), full = list.length >= MAX_COLORS;
+      box.hidden = wrap.hidden || input.disabled;
+      box.innerHTML = `<div class="cpick-add"><input type="color" value="${esc(pick)}" aria-label="Pick a color"><button type="button" class="btn ghost small" data-add${full ? ' disabled' : ''}>Add this color</button><span class="cpick-count">${list.length} of ${MAX_COLORS}</span></div>`
+        + (list.length ? `<div class="cpick-list">${list.map((t, i) => `<span class="cpick-chip">${isHex(t) ? `<i style="background:${esc(t)}"></i>` : ''}<code>${esc(isHex(t) ? t.toUpperCase() : t)}</code><button type="button" data-remove="${i}" aria-label="Remove ${esc(t)}">×</button></span>`).join('')}</div>` : '');
+    }
+    box.addEventListener('input', (e) => { if (e.target.type === 'color') { pick = e.target.value; e.stopPropagation(); } });
+    box.addEventListener('click', (e) => {
+      const list = tokens(input.value);
+      if (e.target.closest('[data-add]')) {
+        if (list.length >= MAX_COLORS) return;
+        if (list.some((t) => t.toLowerCase() === pick.toLowerCase())) { if (window.App) window.App.toast('That color is already in the list.'); return; }
+        return write([...list, pick.toUpperCase()]);
+      }
+      const rm = e.target.closest('[data-remove]');
+      if (rm) write(list.filter((_, i) => i !== Number(rm.dataset.remove)));
+    });
+    input.addEventListener('input', draw);
+    new MutationObserver(draw).observe(wrap, { attributes: true, attributeFilter: ['hidden'] });
+    draw();
+  }
+  const panel = document.getElementById('inspector');
+  if (panel) {
+    const scan = () => panel.querySelectorAll('[data-field="colors"]').forEach(colorPicker);
+    new MutationObserver(scan).observe(panel, { childList: true, subtree: true });
+    scan();
+  }
+
   // ---------- loading cues ----------
   // 1. A thin bar across the top whenever the page is waiting on the server for more than a moment.
   const bar = document.createElement('div');
