@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workbench for Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="workbench.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body data-view="bench">
+<nav class="nav" id="nav" aria-label="Sections"></nav>
+<header class="bar">
+  <input class="name" id="flowName" aria-label="Flow name" maxlength="60">
+  <select id="templates" aria-label="Open a flow or start from a template"></select>
+  <span class="spacer"></span>
+  <div class="tally" id="tally" aria-live="polite"></div>
+  <span class="key" id="keyState">checking key</span>
+  <button class="btn ghost" id="btnImport">Import</button>
+  <button class="btn ghost" id="btnExport">Export</button>
+  <a class="btn ghost" href="bench.html" style="text-decoration:none" title="The plain test page: every call and its raw response">Raw calls</a>
+  <button class="btn wire" id="btnRunFlow">Run flow</button>
+  <input type="file" id="importFile" accept="application/json,.json" hidden>
+</header>
+
+<div class="shell">
+  <aside class="palette" id="palette" aria-label="Capabilities"></aside>
+  <main class="canvas" id="canvas" aria-label="Flow canvas">
+    <div class="world" id="world">
+      <svg id="wires" viewBox="-5000 -5000 16000 16000" aria-hidden="true"><g id="edges"></g><path id="wire-temp" d="" hidden></path></svg>
+    </div>
+    <div class="empty" id="empty" hidden><div><b>Nothing on the bench yet</b>Pick a capability on the left, or start from a template.</div></div>
+    <div class="banner" id="banner" hidden></div>
+    <div class="zoom">
+      <button id="zoomOut" aria-label="Zoom out">&minus;</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="Zoom in">+</button>
+      <button class="fit" id="zoomFit">Fit</button>
+    </div>
+  </main>
+  <aside class="inspector" id="inspector" aria-label="Details"></aside>
+</div>
+
+<main class="pages">
+  <section class="page" id="page-runs"></section>
+  <section class="page" id="page-models"></section>
+  <section class="page" id="page-prompts"></section>
+  <section class="page" id="page-data"></section>
+  <section class="page" id="page-docs"></section>
+</main>
+
+<dialog id="dlg"></dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="app.js"></script>
+<script src="nodes.js"></script>
+<script src="workbench.js"></script>
+</body>
+</html>

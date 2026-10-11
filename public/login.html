@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Workbench for Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="workbench.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="signin">
+<main class="signin-card">
+  <div class="brand"><b>Workbench</b><span>for the Arcade API</span></div>
+  <h1 id="heading">Sign in</h1>
+  <form class="form" id="form" autocomplete="on">
+    <label>Name<input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label>Password<input type="password" id="password" name="password" autocomplete="current-password" required></label>
+    <p class="msg bad" id="msg" role="alert" hidden></p>
+    <button class="btn wire" id="submit" type="submit">Sign in</button>
+  </form>
+  <p class="swap" id="swap"><span id="swapText">New here?</span> <button type="button" id="swapBtn">Create an account</button></p>
+  <p class="dev" id="dev" hidden>This server is using its development sign-in. The name and password are in <code>.env.example</code> under <code>WORKBENCH_USERS</code>. Change it before anyone else can reach this server.</p>
+</main>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  let mode = 'login';
+  function setMode(next) {
+    mode = next;
+    $('heading').textContent = mode === 'login' ? 'Sign in' : 'Create an account';
+    $('submit').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+    $('swapText').textContent = mode === 'login' ? 'New here?' : 'Already have an account?';
+    $('swapBtn').textContent = mode === 'login' ? 'Create an account' : 'Sign in';
+    $('password').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+    $('msg').hidden = true;
+  }
+  $('swapBtn').onclick = () => setMode(mode === 'login' ? 'signup' : 'login');
+  $('form').onsubmit = async (e) => {
+    e.preventDefault();
+    $('submit').disabled = true;
+    $('msg').hidden = true;
+    try {
+      const res = await fetch('/api/' + mode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('username').value, password: $('password').value }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'That did not work. Try again.');
+      location.href = '/';
+    } catch (err) {
+      $('msg').textContent = err.message === 'Failed to fetch' ? 'The server is not reachable. Is `node server.js` still running?' : err.message;
+      $('msg').hidden = false;
+    } finally { $('submit').disabled = false; }
+  };
+  fetch('/api/health').then((r) => r.json()).then((h) => { $('swap').hidden = !h.signup; $('dev').hidden = !h.devLogin; }).catch(() => {});
+  // Already signed in: go straight to the bench.
+  fetch('/api/me').then((r) => { if (r.ok) location.href = '/'; }).catch(() => {});
+})();
+</script>
+</body>
+</html>

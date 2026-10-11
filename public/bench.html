@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcade starter</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --panel: #ffffff; --ink: #1c1b19; --muted: #6b675f; --line: #e2ddd2;
+    --accent: #1f4f46; --accent-ink: #ffffff; --ok: #1f7a4d; --bad: #b3261e; --warn: #8a5a00;
+    --code: #f1eee7; --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151513; --panel: #1e1e1b; --ink: #ecebe6; --muted: #a09c92; --line: #33322d;
+      --accent: #7fc8b6; --accent-ink: #10201c; --ok: #6fcf97; --bad: #ff8a80; --warn: #e0b057; --code: #262622; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 20px 16px 8px; max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); }
+  main { max-width: 1180px; margin: 0 auto; padding: 8px 16px 48px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 980px) { main { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; } }
+  .col { display: grid; gap: 16px; min-width: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+  section h2 { font-size: 15px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+  .step { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 700; flex: none; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  button { font: inherit; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+  button.ghost { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  textarea, input[type=text], input[type=number], select { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  textarea { min-height: 84px; resize: vertical; }
+  label { font-size: 13px; color: var(--muted); display: block; margin: 0 0 4px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; color: var(--ink); margin-top: 10px; }
+  .check input { margin-top: 4px; }
+  .status { font-size: 13px; margin-top: 10px; min-height: 20px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .muted { color: var(--muted); }
+  .cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-top: 12px; max-height: 330px; overflow: auto; }
+  .cat { border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: var(--bg); color: var(--ink); text-align: left; font-weight: 500; font-size: 13px; }
+  .cat img, .cat .ph { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--code); display: block; margin-bottom: 6px; }
+  .cat.sel { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.jewelry { color: var(--warn); border-color: var(--warn); }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .filters button { padding: 3px 10px; font-size: 13px; font-weight: 500; }
+  .imgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .imgs a { display: block; }
+  .imgs img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; background: var(--code); }
+  .big img { width: 100%; max-width: 420px; border-radius: 8px; border: 1px solid var(--line); display: block; margin-top: 12px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 14px; }
+  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+  .price { font-size: 22px; font-weight: 700; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .ids { font-size: 12px; color: var(--muted); margin-top: 8px; overflow-wrap: anywhere; }
+  #log { max-height: 70vh; overflow: auto; display: grid; gap: 8px; margin-top: 10px; }
+  details.entry { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  details.entry summary { cursor: pointer; padding: 6px 10px; font-size: 13px; display: flex; gap: 8px; align-items: baseline; }
+  details.entry pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); overflow: auto; max-height: 320px; background: var(--code); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .lib { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 12px; max-height: 300px; overflow: auto; }
+  .lib button { padding: 4px; background: var(--bg); border-color: var(--line); color: var(--ink); font-size: 11px; font-weight: 500; overflow: hidden; }
+  .lib img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 4px; background: var(--code); }
+  a { color: var(--accent); }
+  .banner { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Arcade starter</h1>
+  <p>A local test bench for the Arcade API: design, product, price, checkout. Every call and its raw response is shown in the log.</p>
+</header>
+
+<main>
+  <div class="col">
+
+    <section>
+      <h2><span class="step">1</span> Connection</h2>
+      <p class="hint">Checks that the server has your key and that Arcade accepts it. Nothing is created.</p>
+      <button id="btnTest">Test connection</button>
+      <div class="status" id="connStatus"></div>
+    </section>
+
+    <section>
+      <h2><span class="step">2</span> Categories</h2>
+      <p class="hint">What Arcade can manufacture. <b>Print</b> categories take any pattern and can be refined; <b>jewelry</b> categories design the piece and build its product in one step.</p>
+      <button id="btnCats">Load categories</button>
+      <div class="filters" id="catFilters" hidden></div>
+      <div class="cats" id="cats"></div>
+      <div class="status" id="catStatus"></div>
+    </section>
+
+    <section>
+      <h2><span class="step">3</span> Generate a design</h2>
+      <p class="hint">Takes one to two minutes. For jewelry, name the metal and details in the prompt.</p>
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" maxlength="1000">Small blue and white block-print florals on natural linen</textarea>
+      <label class="check"><input type="checkbox" id="withProduct"> <span>Also build a product in the selected category <span class="muted" id="withProductNote">(select a category above)</span></span></label>
+      <div class="row">
+        <button id="btnGen">Generate</button>
+        <span class="status" id="genStatus" style="margin:0"></span>
+      </div>
+      <div class="big" id="patternOut"></div>
+    </section>
+
+    <section>
+      <h2><span class="step">4</span> Build a product <span class="tag">print only</span></h2>
+      <p class="hint">Uses the current pattern and the selected print category. Change an option and Arcade reports which other values can still be made.</p>
+      <div class="row" style="margin-top:0">
+        <button id="btnOpts" class="ghost">Load options</button>
+        <button id="btnOptsReset" class="ghost" hidden>Reset choices</button>
+      </div>
+      <div class="opts" id="opts"></div>
+      <label class="check"><input type="checkbox" id="fitFill"> <span>Fill the product with the pattern if the shapes don't match (<code>fit: fill</code>)</span></label>
+      <div class="row">
+        <button id="btnProduct" disabled>Create product</button>
+        <span class="status" id="prodStatus" style="margin:0"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="step">5</span> Product and price</h2>
+      <p class="hint">Arcade's product images, maker and guaranteed unit price.</p>
+      <div class="row" style="margin-top:0">
+        <label for="qty" style="margin:0">Price for quantity</label>
+        <input type="number" id="qty" min="1" value="1" style="width:90px">
+        <button id="btnReprice" class="ghost" disabled>Refresh</button>
+      </div>
+      <div id="productOut"><p class="muted" style="margin:12px 0 0">No product yet.</p></div>
+    </section>
+
+    <section>
+      <h2><span class="step">6</span> Checkout link</h2>
+      <p class="hint">Creates a real checkout on your Arcade account for the current product. Nothing is charged until someone pays on Arcade's page; this app never pays.</p>
+      <label class="check"><input type="checkbox" id="dropShip" checked> <span>Drop-ship (required for quantity 1 without a subscription)</span></label>
+      <label class="check"><input type="checkbox" id="coConfirm"> <span>I want to create a real checkout for this product</span></label>
+      <div class="row">
+        <button id="btnCheckout" disabled>Create checkout</button>
+        <button id="btnOrder" class="ghost" disabled>Check order</button>
+      </div>
+      <div class="status" id="coStatus"></div>
+    </section>
+
+  </div>
+
+  <div class="col">
+    <section>
+      <h2>Your library</h2>
+      <p class="hint">Reuse designs and products you've already made instead of generating again.</p>
+      <div class="row" style="margin-top:0">
+        <button id="btnLibP" class="ghost">Load patterns</button>
+        <button id="btnLibR" class="ghost">Load products</button>
+      </div>
+      <div class="lib" id="lib"></div>
+    </section>
+
+    <section>
+      <h2>API log</h2>
+      <p class="hint">Newest first. Click an entry for the request and the raw response.</p>
+      <button id="btnClear" class="ghost">Clear</button>
+      <div id="log"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { categories: [], filter: 'all', category: null, chosen: {}, selections: null, canManufacture: false,
+                patternId: null, productId: null, checkoutId: null };
+
+const uid = (prefix) => `${prefix}-${(crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2))}`;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function setStatus(id, text, cls = 'muted') { const el = $(id); el.className = 'status ' + cls; el.textContent = text; }
+
+function logEntry(endpoint, req, status, body, ms, quiet) {
+  const d = document.createElement('details'); d.className = 'entry';
+  const cls = status >= 200 && status < 300 ? 'ok' : 'bad';
+  const extra = body && body.status && typeof body.status === 'string' ? ` · ${body.status}` : '';
+  d.innerHTML = `<summary><b class="${cls}">${status}</b><span class="mono">${esc(endpoint)}</span><span class="muted">${ms}ms${esc(extra)}</span></summary>` +
+    `<pre>${esc('REQUEST\n' + JSON.stringify(req, null, 2) + '\n\nRESPONSE\n' + JSON.stringify(body, null, 2))}</pre>`;
+  // Job polls replace the previous poll entry instead of flooding the log.
+  if (quiet) { d.dataset.quiet = '1'; const first = $('log').firstElementChild; if (first && first.dataset.quiet === '1') first.remove(); }
+  $('log').prepend(d);
+  while ($('log').children.length > 150) $('log').lastChild.remove();
+}
+
+// One call to Arcade through the local server. Waits and retries on 429/5xx with the same body.
+async function arcade(endpoint, body = {}, { quiet = false } = {}) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const t0 = performance.now();
+    let res, data;
+    try {
+      res = await fetch('/api/arcade/' + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      data = await res.json();
+    } catch (e) {
+      logEntry(endpoint, body, 0, { message: String(e) }, Math.round(performance.now() - t0));
+      throw new Error('Local server not reachable. Is `node server.js` still running?');
+    }
+    logEntry(endpoint, body, res.status, data, Math.round(performance.now() - t0), quiet);
+    if (res.ok) return data;
+    const retryable = res.status === 429 || res.status >= 500 || (res.status === 409 && /start/i.test(data.message || ''));
+    if (retryable && attempt < 4 && data.code !== 'NO_KEY' && data.code !== 'UPSTREAM_UNREACHABLE') {
+      const wait = Number(res.headers.get('Retry-After')) || 3 * (attempt + 1);
+      await sleep(wait * 1000);
+      continue;
+    }
+    const err = new Error(`${res.status} ${data.code || data.error || ''}: ${data.message || 'Request failed'}`);
+    err.status = res.status; err.data = data; throw err;
+  }
+}
+
+// Poll a job every 3 seconds until it finishes.
+async function pollJob(jobId, statusId, label) {
+  const t0 = Date.now();
+  for (;;) {
+    const secs = Math.round((Date.now() - t0) / 1000);
+    setStatus(statusId, `${label}… ${secs}s`, 'muted');
+    await sleep(3000);
+    const job = await arcade('jobs/get', { jobId }, { quiet: true });
+    if (job.status === 'succeeded') return job;
+    if (job.status === 'failed') throw new Error(job.error?.message || 'Job failed');
+  }
+}
+
+async function guard(btn, statusId, fn) {
+  btn.disabled = true;
+  try { await fn(); }
+  catch (e) { setStatus(statusId, e.message, 'bad'); }
+  finally { btn.disabled = false; refreshButtons(); }
+}
+
+function refreshButtons() {
+  const cat = state.category;
+  const isPrint = cat && cat.world === 'print';
+  $('btnOpts').disabled = !isPrint;
+  $('btnProduct').disabled = !(isPrint && state.patternId && state.selections && state.canManufacture);
+  $('btnReprice').disabled = !state.productId;
+  $('btnCheckout').disabled = !(state.productId && $('coConfirm').checked);
+  $('btnOrder').disabled = !state.checkoutId;
+  const wp = $('withProduct');
+  if (!cat) { wp.checked = false; wp.disabled = true; $('withProductNote').textContent = '(select a category above)'; }
+  else if (cat.world === 'jewelry') { wp.checked = true; wp.disabled = true; $('withProductNote').textContent = `(${cat.name}: jewelry is always designed with its product)`; }
+  else { wp.disabled = false; $('withProductNote').textContent = `(${cat.name}: Arcade picks the options)`; }
+}
+
+// ---------- 1. connection ----------
+$('btnTest').onclick = () => guard($('btnTest'), 'connStatus', async () => {
+  const h = await (await fetch('/api/health')).json();
+  if (!h.hasKey) return setStatus('connStatus', 'No key on the server. Copy .env.example to .env, add ARCADE_API_KEY, restart `node server.js`.', 'bad');
+  setStatus('connStatus', 'Key found, calling Arcade…');
+  const m = await arcade('models/list', {});
+  setStatus('connStatus', `Connected. ${m.items?.length ?? 0} generation models available: ${(m.items || []).map((x) => x.name).join(', ') || 'none listed'}.`, 'ok');
+});
+
+// ---------- 2. categories ----------
+function renderCats() {
+  const groups = ['all', 'print', 'jewelry'];
+  $('catFilters').hidden = false;
+  $('catFilters').innerHTML = groups.map((g) => {
+    const n = g === 'all' ? state.categories.length : state.categories.filter((c) => c.world === g).length;
+    return `<button class="${state.filter === g ? '' : 'ghost'}" data-f="${g}">${g} (${n})</button>`;
+  }).join('');
+  $('catFilters').querySelectorAll('button').forEach((b) => b.onclick = () => { state.filter = b.dataset.f; renderCats(); });
+  const list = state.categories.filter((c) => state.filter === 'all' || c.world === state.filter);
+  $('cats').innerHTML = list.map((c) => `
+    <button class="cat ${state.category?.categoryId === c.categoryId ? 'sel' : ''}" data-id="${esc(c.categoryId)}">
+      ${c.imageUrl ? `<img loading="lazy" src="${esc(c.imageUrl)}" alt="">` : '<span class="ph"></span>'}
+      ${esc(c.name)}<br><span class="tag ${esc(c.world)}">${esc(c.world)}</span>
+      ${c.category && c.category.name !== c.name ? `<span class="muted"> ${esc(c.category.name)}</span>` : ''}
+    </button>`).join('');
+  $('cats').querySelectorAll('.cat').forEach((b) => b.onclick = () => selectCategory(b.dataset.id));
+}
+function selectCategory(id) {
+  const same = state.category?.categoryId === id;
+  state.category = same ? null : state.categories.find((c) => c.categoryId === id);
+  state.chosen = {}; state.selections = null; state.canManufacture = false;
+  $('opts').innerHTML = ''; $('btnOptsReset').hidden = true;
+  setStatus('catStatus', state.category ? `Selected: ${state.category.name} (${state.category.world}).` : '');
+  if (state.category?.world === 'jewelry' && /block-print florals/.test($('prompt').value)) {
+    $('prompt').value = 'A 14k yellow gold ring with a wide hammered band';
+  }
+  renderCats(); refreshButtons();
+}
+$('btnCats').onclick = () => guard($('btnCats'), 'catStatus', async () => {
+  const r = await arcade('categories/list', {});
+  state.categories = r.items || [];
+  setStatus('catStatus', `${state.categories.length} categories. Click one to select it.`, 'ok');
+  renderCats();
+});
+
+// ---------- 3. generate ----------
+async function showPattern(patternId) {
+  const p = await arcade('patterns/get', { patternId });
+  state.patternId = p.patternId;
+  $('patternOut').innerHTML = `<a href="${esc(p.imageUrl)}" target="_blank" rel="noopener"><img src="${esc(p.imageUrl)}" alt="Generated design"></a>
+    <div class="ids">patternId <code>${esc(p.patternId)}</code> · ${p.width}×${p.height}${p.sourcePatternId ? ' · refined from ' + esc(p.sourcePatternId) : ''}<br>Image links expire; reload the pattern from the library to renew.</div>`;
+  refreshButtons();
+}
+$('btnGen').onclick = () => guard($('btnGen'), 'genStatus', async () => {
+  const prompt = $('prompt').value.trim();
+  if (!prompt) throw new Error('Write a prompt first.');
+  const body = { requestId: uid('pattern'), prompt };
+  if ($('withProduct').checked && state.category) body.categoryId = state.category.categoryId;
+  setStatus('genStatus', 'Starting…');
+  const started = await arcade('patterns/create', body);
+  const job = await pollJob(started.jobId, 'genStatus', body.categoryId ? 'Designing and building the product' : 'Generating');
+  if (!job.result) { setStatus('genStatus', 'Job succeeded but returned no result (the pattern may have been deleted).', 'warn'); return; }
+  await showPattern(job.result.patternId);
+  if (job.result.productId) await showProduct(job.result.productId);
+  setStatus('genStatus', job.result.productId ? 'Done: design and product are ready.' : 'Done.', 'ok');
+});
+
+// ---------- 4. print product ----------
+async function loadOptions() {
+  const cat = state.category;
+  const r = await arcade('categories/get', { categoryId: cat.categoryId, selections: state.chosen });
+  state.selections = r.selections; state.canManufacture = r.canManufacture;
+  $('opts').innerHTML = (r.options || []).map((o) => `
+    <div><label>${esc(o.label)}${state.chosen[o.key] ? ' ·  chosen' : ''}</label>
+      <select data-key="${esc(o.key)}">${o.values.map((v) =>
+        `<option value="${esc(v.value)}" ${r.selections[o.key] === v.value ? 'selected' : ''} ${v.available ? '' : 'disabled'}>${esc(v.label)}${v.available ? '' : ' (unavailable)'}</option>`).join('')}
+      </select></div>`).join('') || '<p class="muted">This category has no options.</p>';
+  $('opts').querySelectorAll('select').forEach((s) => s.onchange = () => {
+    state.chosen[s.dataset.key] = s.value;
+    guard($('btnOpts'), 'prodStatus', loadOptions);
+  });
+  $('btnOptsReset').hidden = Object.keys(state.chosen).length === 0;
+  setStatus('prodStatus', r.canManufacture ? 'This selection can be made.' : 'These choices cannot be made together; change one.', r.canManufacture ? 'ok' : 'warn');
+  if (!state.patternId) setStatus('prodStatus', 'Options loaded. Generate or pick a pattern to build a product.', 'muted');
+  refreshButtons();
+}
+$('btnOpts').onclick = () => guard($('btnOpts'), 'prodStatus', loadOptions);
+$('btnOptsReset').onclick = () => { state.chosen = {}; guard($('btnOpts'), 'prodStatus', loadOptions); };
+$('btnProduct').onclick = () => guard($('btnProduct'), 'prodStatus', async () => {
+  const body = { requestId: uid('product'), patternId: state.patternId, categoryId: state.category.categoryId, selections: state.selections };
+  if ($('fitFill').checked) body.fit = { mode: 'fill' };
+  setStatus('prodStatus', 'Starting…');
+  const started = await arcade('products/create', body);
+  const job = await pollJob(started.jobId, 'prodStatus', 'Building the product');
+  if (!job.result?.productId) throw new Error('Job succeeded but returned no productId.');
+  await showProduct(job.result.productId);
+  setStatus('prodStatus', 'Product built.', 'ok');
+});
+
+// ---------- 5. product ----------
+async function showProduct(productId) {
+  const quantity = Math.max(1, parseInt($('qty').value, 10) || 1);
+  const p = await arcade('products/get', { productId, quantity });
+  state.productId = p.productId;
+  const price = p.unitPrice ? `${esc(p.unitPrice.amount)} ${esc(p.unitPrice.currency)}` : 'Not available yet; refresh in a moment';
+  const tiers = p.volumeDiscounts?.tiers?.length
+    ? p.volumeDiscounts.tiers.map((t) => `${t.discountPercent}% from ${esc(t.minimumSpend)} ${esc(p.volumeDiscounts.currency)}`).join(' · ') : 'None';
+  const imgs = (p.images?.length ? p.images.map((i) => i.url) : [p.imageUrl]).filter(Boolean);
+  $('productOut').innerHTML = `
+    <dl>
+      <dt>Title</dt><dd><b>${esc(p.title)}</b></dd>
+      <dt>Unit price</dt><dd><span class="price">${price}</span> <span class="muted">at quantity ${quantity}, before volume discount</span></dd>
+      <dt>Options</dt><dd>${esc(p.selectionLabel || JSON.stringify(p.selections))}</dd>
+      <dt>Maker</dt><dd>${esc(p.maker?.name || '')}</dd>
+      <dt>Volume discounts</dt><dd>${tiers}</dd>
+      ${p.description ? `<dt>Details</dt><dd>${esc(p.description)}</dd>` : ''}
+    </dl>
+    <div class="imgs">${imgs.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(u)}" alt="Product image"></a>`).join('')}</div>
+    <div class="ids">${imgs.length} image${imgs.length === 1 ? '' : 's'} · productId <code>${esc(p.productId)}</code> · patternId <code>${esc(p.patternId)}</code></div>`;
+  state.checkoutId = null; setStatus('coStatus', '');
+  refreshButtons();
+}
+$('btnReprice').onclick = () => guard($('btnReprice'), 'coStatus', () => showProduct(state.productId));
+
+// ---------- 6. checkout ----------
+$('coConfirm').onchange = refreshButtons;
+$('btnCheckout').onclick = () => guard($('btnCheckout'), 'coStatus', async () => {
+  const quantity = Math.max(1, parseInt($('qty').value, 10) || 1);
+  const body = { requestId: uid('checkout'), lines: [{ productId: state.productId, quantity }], dropShip: $('dropShip').checked };
+  const c = await arcade('checkouts/create', body);
+  state.checkoutId = c.checkoutId;
+  $('coConfirm').checked = false;
+  const el = $('coStatus'); el.className = 'status ok';
+  el.innerHTML = `Checkout created (quantity ${quantity}). <a href="${esc(c.checkoutUrl)}" target="_blank" rel="noopener">Open Arcade's checkout page</a><div class="ids">checkoutId <code>${esc(c.checkoutId)}</code></div>`;
+});
+$('btnOrder').onclick = () => guard($('btnOrder'), 'coStatus', async () => {
+  try {
+    const o = await arcade('orders/get', { checkoutId: state.checkoutId });
+    setStatus('coStatus', `Order ${o.orderNumber}: ${o.status}, total ${o.total?.amount} ${o.total?.currency}.`, 'ok');
+  } catch (e) {
+    if (e.status === 404) setStatus('coStatus', 'No order yet: the checkout has not been paid.', 'muted'); else throw e;
+  }
+});
+
+// ---------- library ----------
+$('btnLibP').onclick = () => guard($('btnLibP'), 'genStatus', async () => {
+  const r = await arcade('patterns/list', { limit: 24 });
+  $('lib').innerHTML = (r.items || []).map((p) => `<button data-p="${esc(p.patternId)}" title="${esc(p.prompt || '')}"><img loading="lazy" src="${esc(p.thumbnailUrl || p.imageUrl)}" alt="">${esc((p.prompt || 'pattern').slice(0, 28))}</button>`).join('') || '<p class="muted">No patterns yet.</p>';
+  $('lib').querySelectorAll('button').forEach((b) => b.onclick = () => guard(b, 'genStatus', async () => { await showPattern(b.dataset.p); setStatus('genStatus', 'Loaded from library.', 'ok'); }));
+});
+$('btnLibR').onclick = () => guard($('btnLibR'), 'coStatus', async () => {
+  const r = await arcade('products/list', { limit: 24 });
+  $('lib').innerHTML = (r.items || []).map((p) => `<button data-r="${esc(p.productId)}" title="${esc(p.title || '')}">${p.imageUrl ? `<img loading="lazy" src="${esc(p.imageUrl)}" alt="">` : ''}${esc((p.title || 'product').slice(0, 28))}</button>`).join('') || '<p class="muted">No products yet.</p>';
+  $('lib').querySelectorAll('button').forEach((b) => b.onclick = () => guard(b, 'coStatus', () => showProduct(b.dataset.r)));
+});
+
+$('btnClear').onclick = () => { $('log').innerHTML = ''; };
+refreshButtons();
+</script>
+</body>
+</html>

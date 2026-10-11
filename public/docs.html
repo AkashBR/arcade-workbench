@@ -1,0 +1,101 @@
+<div class="docs">
+  <div class="page-head"><div><h1>Docs</h1><p class="lede">How to use the workbench, what Arcade allows, and how to extend it.</p></div></div>
+  <ul class="toc">
+    <li><a href="#docs" onclick="document.getElementById('d-start').scrollIntoView()">Start</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-bench').scrollIntoView()">The bench</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-rules').scrollIntoView()">What Arcade allows</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-runs').scrollIntoView()">Runs</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-keys').scrollIntoView()">Models and keys</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-prompts').scrollIntoView()">Prompts</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-data').scrollIntoView()">Data</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-host').scrollIntoView()">Hosting it</a></li>
+    <li><a href="#docs" onclick="document.getElementById('d-extend').scrollIntoView()">Add a capability</a></li>
+  </ul>
+
+  <h2 id="d-start">Start in three steps</h2>
+  <ol>
+    <li><b>Sign in.</b> Use the account you were given, or create one on the sign-in page.</li>
+    <li><b>Check your Arcade key.</b> Open Models and keys. If the host shares a key you can start right away. Otherwise paste your own from <a href="https://studio.arcade.ai/settings/api-keys" target="_blank" rel="noopener">Arcade Studio</a> and press Test the key.</li>
+    <li><b>Run a template.</b> On the Bench, pick "Jewelry: prompt to checkout link" and press Run flow.</li>
+  </ol>
+
+  <h2 id="d-bench">The bench</h2>
+  <p>The bench is a canvas. Each box is a step, and each step is one thing the Arcade API can do. Wires carry a step's result to the next step.</p>
+  <ul>
+    <li><b>Add a step.</b> Click or drag a capability from the left panel.</li>
+    <li><b>Wire steps.</b> Drag from a dot on the right edge of one step to a dot on the left edge of another. Click a wire, then its cross, to remove it.</li>
+    <li><b>Run.</b> Run on a step runs that step, and any step before it that has no result yet. Run flow runs every step that has not worked yet, one at a time.</li>
+    <li><b>Read the status.</b> Ready, Can't run, Running, Worked or Failed. A step that can't run tells you why before you spend a generation.</li>
+    <li><b>Fork.</b> Fork copies a step and everything after it, fed by the same inputs. Change the copy and run it to compare two versions.</li>
+    <li><b>Inspect.</b> Select a step to see its result, Arcade's rules for it, and every request and raw response.</li>
+    <li><b>Keep flows.</b> Flows save to your account as you work. The flow menu opens, duplicates and deletes them. Export and Import move a flow as a file.</li>
+  </ul>
+
+  <h2 id="d-rules">What Arcade allows</h2>
+  <p>Every category is either <b>print</b> or <b>jewelry</b>. That one fact decides most of what can follow.</p>
+  <div class="table-wrap"><table class="grid">
+    <thead><tr><th>Step</th><th>Print</th><th>Jewelry</th></tr></thead>
+    <tbody>
+      <tr><td><b>Design</b></td><td>Prompt, plus optional style model and colors. Works with or without a category.</td><td>Prompt only, and a category is required. One call makes the piece and its product.</td></tr>
+      <tr><td><b>Refine</b> (edit, recolor, crop, seamless, extend, fix)</td><td>Yes. Each refine makes a new design.</td><td>Refused with 400. Fork the Design step and change the prompt instead.</td></tr>
+      <tr><td><b>Build product</b></td><td>Yes. Choose options, or let Arcade pick.</td><td>Refused. The Design step already made the product.</td></tr>
+      <tr><td><b>Price</b></td><td>Yes.</td><td>Yes.</td></tr>
+      <tr><td><b>Checkout link</b></td><td>Yes.</td><td>Yes.</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li><b>Name the metal.</b> A jewelry prompt should name one metal the category offers. Run the Category step to see the list.</li>
+    <li><b>Say "no stones" when you mean it.</b> Arcade may add a stone to a plain piece, and that raises the price.</li>
+    <li><b>A jewelry job can fail on price.</b> If no maker can price the design, try another metal or a simpler shape.</li>
+    <li><b>Quantity 1 needs drop-ship</b> unless the account has a subscription. Otherwise checkout returns 412.</li>
+    <li><b>Checkouts are real.</b> The workbench asks before creating one and never pays. Nothing is charged until someone pays on Arcade's page.</li>
+    <li><b>Not available:</b> upscale (Arcade Studio only), region edits and reference images (not built into the bench yet).</li>
+  </ul>
+
+  <h2 id="d-runs">Runs</h2>
+  <p>Every step you run is recorded. The Runs page shows the success rate, counts of worked and failed runs, the same numbers per step and per flow, the typical time a step takes, and the reasons steps failed. Use it to see which steps are reliable before you build on them.</p>
+
+  <h2 id="d-keys">Models and keys</h2>
+  <ul>
+    <li><b>Arcade.</b> Use the host's key if one is shared, or your own. Your own key is used only for your account.</li>
+    <li><b>AI models.</b> Add OpenAI, Anthropic, Gemini, OpenRouter, Groq, a local Ollama, or any service that speaks the OpenAI chat format. Connect as many as you like.</li>
+    <li><b>Load the model list.</b> After saving a key, press Load models from the provider and pick one. You can also type a model ID.</li>
+    <li><b>Test it there.</b> The side panel sends one real request and shows the reply, the time it took, or the provider's error.</li>
+    <li><b>Where keys go.</b> Keys are encrypted on the server and never sent back to the browser. The page only shows the first and last characters.</li>
+  </ul>
+
+  <h2 id="d-prompts">Prompts</h2>
+  <ul>
+    <li><b>Save prompts that work</b> on the Prompts page, marked for jewelry, print or either.</li>
+    <li><b>Ask a model for ideas.</b> Pick a connected model and a category, add a few words, and press Suggest prompts. The model is given Arcade's rules, so the ideas name a metal the category can be made in.</li>
+    <li><b>Use them on the bench.</b> The Design step has two buttons under its prompt: From library and Suggest.</li>
+  </ul>
+
+  <h2 id="d-data">Data</h2>
+  <p>Flows, run history, prompts and connections are rows in one SQLite database, stored per account. The Data page shows where the file is and lets you download everything of yours as JSON. The admin can point the workbench at a different SQLite file there. Postgres and hosted databases are not supported yet.</p>
+
+  <h2 id="d-host">Hosting it for other people</h2>
+  <p>Out of the box the server listens on this machine only. Before anyone else can reach it, set these in <code>.env</code>:</p>
+  <pre><code>WORKBENCH_USERS=yourname:a-long-password   # first one is the admin
+WORKBENCH_SECRET=a-long-random-string      # encrypts stored API keys
+ALLOW_SIGNUP=false                         # or leave on to let people create accounts
+SHARE_HOST_KEYS=false                      # or leave on to lend your keys to everyone who signs in</code></pre>
+  <ul>
+    <li><b>The sign-in is a light one.</b> It is a name and a password, with no email, reset or second factor. Put the server behind HTTPS and your own access control before exposing it.</li>
+    <li><b>Sharing host keys means sharing the bill.</b> Anyone who signs in can create designs and checkouts on that Arcade account.</li>
+    <li><b>Custom model URLs are called from the server.</b> Only give accounts to people you trust with that.</li>
+  </ul>
+
+  <h2 id="d-extend">Add a capability</h2>
+  <p>Each capability is one entry in <code>public/nodes.js</code>: its inputs and outputs, its fields, the rules that decide whether it can run, and the calls it makes.</p>
+  <pre><code>add('price', {
+  title: 'Price', group: 'Product', endpoint: 'products/get', worlds: ['print', 'jewelry'], cost: 'read',
+  blurb: 'Reads the guaranteed unit price, maker and images for a quantity.',
+  inputs: [{ key: 'product', type: 'product', label: 'Product' }],
+  outputs: [{ key: 'product', type: 'product', label: 'Product' }],
+  fields: [{ key: 'quantity', kind: 'number', label: 'Quantity', default: 1, min: 1 }],
+  check: (n, g) =&gt; [],            // return { level: 'block', text } to stop it, with the reason
+  run: async (n, inp, ctx) =&gt; ({ product: await ctx.readProduct(inp.product.productId, n.cfg.quantity) }),
+});</code></pre>
+  <p>If the capability calls an Arcade endpoint that is not listed yet, add it to the allow-list in <code>server.js</code>.</p>
+</div>

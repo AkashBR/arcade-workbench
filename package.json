@@ -1,0 +1,10 @@
+{
+  "name": "arcade-workbench",
+  "version": "0.2.0",
+  "description": "A visual workbench for the Arcade API: wire capabilities into a flow, see what Arcade allows before you run it, fork any step into variations.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=22.5" },
+  "license": "MIT"
+}

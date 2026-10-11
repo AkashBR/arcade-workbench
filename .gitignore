@@ -1,0 +1,7 @@
+.env
+node_modules/
+.arcade-api/
+.DS_Store
+.claude/
+data/
+vitrine/
