@@ -1,0 +1,91 @@
+/* The two side panels: a slim menu, and the sub-menu that opens beside it. Tokens come from workbench.css. */
+:root { --rail-w: 72px; --sub-w: 288px; }
+body.has-menu { padding-left: var(--rail-w); transition: padding-left .18s var(--ease, ease); }
+body.has-menu[data-sub="flows"], body.has-menu[data-sub="steps"] { padding-left: calc(var(--rail-w) + var(--sub-w)); }
+/* The menu replaces the row of tabs and the flow drop-down. */
+body.has-menu > .nav, body.has-menu #templates { display: none; }
+
+.mrail { position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail-w); z-index: 40; background: var(--paper); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 10px 6px; overflow-y: auto; }
+.mrail-brand { display: grid; place-items: center; height: 40px; margin-bottom: 6px; font: 500 24px/1 var(--serif, serif); color: var(--ink); text-decoration: none; }
+.mrail-item { display: grid; justify-items: center; gap: 3px; border: 0; background: transparent; border-radius: 10px; padding: 8px 2px 6px; cursor: pointer; color: var(--ink-2); font: 500 11px/14px var(--body); }
+.mrail-item .ic { width: 20px; height: 20px; stroke-width: 1.600; }
+.mrail-item:hover { background: var(--panel); color: var(--ink); }
+.mrail-item[aria-current="page"] { background: var(--stone, var(--panel)); color: var(--ink); }
+.mrail-gap { flex: 1; }
+.mrail-who { align-self: center; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--stone, var(--panel)); font: 600 12px/1 var(--body); color: var(--ink-2); margin-bottom: 2px; }
+.mrail-who:empty { display: none; }
+
+.msub { position: fixed; left: var(--rail-w); top: 0; bottom: 0; width: var(--sub-w); z-index: 39; background: var(--paper); border-right: 1px solid var(--line); overflow-y: auto; padding: 10px 10px 24px; }
+.sub-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 10px; }
+.sub-head b { font: 600 15px/20px var(--body); }
+.sub-label { font: 600 12px/16px var(--body); color: var(--ink-3); margin: 16px 6px 6px; }
+.sub-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 10px; padding: 7px 6px; cursor: pointer; color: var(--ink); }
+.sub-row:hover { background: var(--panel); }
+.sub-row[aria-current="true"] { background: var(--stone, var(--panel)); }
+.sub-row i { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--panel); color: var(--ink-2); font-style: normal; }
+.sub-row[aria-current="true"] i, .sub-row.new i { background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); }
+.sub-row i .ic { width: 18px; height: 18px; }
+.sub-row b { display: block; font: 500 13.500px/18px var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-row small { display: block; font-size: 12px; line-height: 16px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-acts { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 6px 0; }
+
+/* The step list, now living in the sub-menu. */
+.msub .palette { display: block !important; width: auto !important; border: 0; padding: 0; background: transparent; overflow: visible; }
+.msub .palette h2 { writing-mode: horizontal-tb; transform: none; margin: 12px 8px 4px; padding-top: 12px; border-top: 1px solid var(--line); align-self: auto; }
+.msub .palette h2:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
+.msub .cap { width: 100%; }
+.msub .cap small { display: block; }
+body.has-menu .add-step { display: none; }
+
+/* Small screens: the menu runs along the top, and the sub-menu drops over the page. */
+@media (max-width: 720px) {
+  body.has-menu, body.has-menu[data-sub="flows"], body.has-menu[data-sub="steps"] { padding-left: 0; padding-top: 58px; }
+  .mrail { right: 0; bottom: auto; width: auto; height: 58px; flex-direction: row; align-items: center; border-right: 0; border-bottom: 1px solid var(--line); padding: 4px 8px; overflow-x: auto; overflow-y: hidden; }
+  .mrail-brand { margin: 0 6px 0 2px; }
+  .mrail-item { min-width: 56px; padding: 6px 4px 4px; }
+  .mrail-gap { min-width: 8px; }
+  .msub { left: 0; right: 0; top: 58px; width: auto; border-right: 0; }
+}
+/* The step list no longer sits in the bench grid, so on stacked layouts the canvas takes the first row itself.
+   Without this the canvas falls into an auto-height row and collapses to nothing. */
+@media (max-width: 1020px) {
+  body.has-menu .shell { grid-template-rows: minmax(0, 1fr) auto; }
+  body.has-menu .shell > .canvas { grid-row: 1; min-height: 260px; }
+  body.has-menu .shell > .inspector { grid-row: 2; }
+}
+
+/* ---------- loading cues ---------- */
+.loadbar { position: fixed; left: 0; right: 0; top: 0; height: 3px; z-index: 60; background: transparent; overflow: hidden; }
+.loadbar::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; border-radius: 3px; background: var(--run, #2447D6); animation: loadbar 1.1s ease-in-out infinite; }
+@keyframes loadbar { to { left: 100%; } }
+.runpill { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); background: var(--citron, #DDE6FC); color: var(--run, #2447D6); border-radius: 999px; padding: 6px 14px 6px 10px; font: 500 13px/18px var(--body); cursor: default; }
+.runpill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runpill i, body[data-busy] #btnRunFlow::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(36, 71, 214, .25); border-top-color: var(--run, #2447D6); animation: spin .8s linear infinite; flex: none; }
+body[data-busy] #btnRunFlow { gap: 8px; }
+body[data-busy] #btnRunFlow::before { border-color: rgba(255, 255, 255, .35); border-top-color: #fff; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loadbar::after, .runpill i, body[data-busy] #btnRunFlow::before { animation: none; } }
+
+@media (prefers-reduced-motion: reduce) { body.has-menu { transition: none; } }
+
+/* This menu takes over from the small tool rail and flows panel on the canvas, so those step aside. */
+body.has-menu #canvas > .rail, body.has-menu .flows-panel { display: none !important; }
+
+/* ---------- a step's panel: what it made comes first, the rest folds away ----------
+   The AI model row (.ai-pick) is also a fold but draws its own summary, so these rules leave it alone. */
+#pResult > h3:first-child { margin-top: 16px; padding-top: 0; border-top: 0; }
+.inspector details.fold:not(.ai-pick) > summary { display: flex; align-items: baseline; gap: 10px; }
+.inspector details.fold:not(.ai-pick) > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.600px solid var(--ink-2); border-bottom: 1.600px solid var(--ink-2); transform: rotate(-45deg); flex: none; align-self: center; transition: transform .15s var(--ease, ease); }
+.inspector details.fold:not(.ai-pick)[open] > summary::before { transform: rotate(45deg); }
+.inspector details.fold:not(.ai-pick) > summary::-webkit-details-marker { display: none; }
+.inspector details.fold:not(.ai-pick) > summary { list-style: none; }
+.fold-sum { flex: 1; min-width: 0; font-weight: 400; font-size: 12.500px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.fold:not(.ai-pick)[open] > summary .fold-sum { display: none; }
+#pActs .p-actions { margin-top: 14px; }
+.ver-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.ver { margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.ver img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--stone, var(--panel)); display: block; }
+.ver figcaption { display: grid; gap: 2px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.ver figcaption b { font: 600 14px/18px var(--body); color: var(--ink); }
+.ver figcaption span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ver-acts { display: grid; gap: 4px; }

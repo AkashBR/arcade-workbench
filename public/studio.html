@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio · Workbench for Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="workbench.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="studio.css">
+<link rel="stylesheet" href="shell.css">
+</head>
+<body class="studio-body">
+<nav class="nav" aria-label="Sections">
+  <div class="brand"><b>Workbench</b><span>for the Arcade API</span></div>
+  <a class="tab" href="/#bench">Bench</a>
+  <a class="tab" href="/#runs">Runs</a>
+  <a class="tab" href="/#models">Models and keys</a>
+  <a class="tab" href="/#prompts">Prompts</a>
+  <a class="tab" href="/#data">Data</a>
+  <a class="tab" href="/#docs">Docs</a>
+  <a class="tab" href="/studio.html" aria-current="page">Studio</a>
+  <span class="spacer"></span>
+  <span class="who" id="who"></span>
+</nav>
+<main class="st" id="studio"><p class="muted" style="padding:24px">Loading…</p></main>
+<dialog id="dlg"></dialog>
+<div class="toast" id="toast" role="status"></div>
+<script src="studio.js"></script>
+<script src="shell.js"></script>
+</body>
+</html>

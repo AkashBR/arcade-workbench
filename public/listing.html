@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listing · Workbench for Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="workbench.css">
+<style>
+  /* The page a shopper sees: the piece, its model shots, the price and one Buy button. Tokens come from workbench.css. */
+  body { display: block; overflow: auto; background: var(--bench); }
+  .ls { max-width: 1120px; margin: 0 auto; padding: 32px 24px 64px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 48px; align-items: start; }
+  .ls-stage { margin: 0; aspect-ratio: 4 / 5; border-radius: 12px; overflow: hidden; background: var(--stone); display: grid; place-items: center; }
+  .ls-stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ls-stage.as-made img { width: 82%; height: auto; border-radius: 8px; }
+  .ls-cap { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 13px; line-height: 18px; color: var(--ink-2); }
+  .ls-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .ls-thumb { position: relative; width: 64px; aspect-ratio: 4 / 5; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--stone); cursor: pointer; }
+  .ls-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ls-thumb[aria-current="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .ls-thumb span { position: absolute; inset: auto 0 0 0; padding: 4px 2px; background: var(--ink); color: #fff; font: 500 9px/1 var(--mono); text-align: center; }
+  .ls-kicker { font: 500 12px/16px var(--mono); letter-spacing: 0.04em; color: var(--ink-2); }
+  .ls h1 { font: 400 clamp(30px, 3.1vw, 40px)/1.1 var(--serif); letter-spacing: -0.02em; margin: 12px 0; text-wrap: balance; }
+  .ls-price { font: 500 22px/28px var(--sans); }
+  .ls-by { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); }
+  .ls-buy { margin-top: 24px; width: 100%; max-width: 380px; height: 48px; font-size: 15px; text-decoration: none; }
+  .ls-buy[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+  .ls-note { margin: 8px 0 0; font-size: 13px; line-height: 18px; color: var(--ink-2); max-width: 52ch; }
+  .ls-copy { margin: 32px 0 0; font-size: 16px; line-height: 26px; max-width: 52ch; }
+  .ls-top { max-width: 1120px; margin: 0 auto; padding: 16px 24px 0; display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--ink-3); }
+  .ls-top b { font: 500 20px/24px var(--serif); color: var(--ink); }
+  .ls-empty { max-width: 44ch; margin: 96px auto; padding: 0 24px; }
+  .ls-empty h1 { font: 400 32px/36px var(--serif); letter-spacing: -0.02em; margin: 0 0 12px; }
+  @media (max-width: 860px) { .ls { grid-template-columns: minmax(0, 1fr); gap: 32px; padding: 24px 16px 48px; } }
+</style>
+</head>
+<body>
+<div class="ls-top"><b>Listing preview</b><span>Made on the Workbench for Arcade</span></div>
+<main id="page"></main>
+<script>
+(function () {
+  'use strict';
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const page = document.getElementById('page');
+  // Only our own pictures and https links are shown, whatever the link says.
+  const pic = (u) => (/^(https:\/\/|\/api\/|\/media\/)/.test(String(u || '')) ? u : '');
+  const link = (u) => (/^https:\/\//.test(String(u || '')) ? u : '');
+  let l = null;
+  try {
+    const raw = location.hash.slice(1).replace(/-/g, '+').replace(/_/g, '/');
+    l = JSON.parse(decodeURIComponent(escape(atob(raw))));
+  } catch { l = null; }
+  if (!l || !l.title) {
+    page.innerHTML = '<div class="ls-empty"><h1>No listing in this link.</h1><p>Open a listing from a Listing page step on the bench.</p><a class="btn" href="/#bench" style="text-decoration:none">Go to the bench</a></div>';
+    return;
+  }
+  document.title = `${l.title} · Listing`;
+  const pics = [{ label: 'As made', url: pic(l.renderUrl), made: true }].concat((l.shots || []).map((s) => ({ label: s.label, url: pic(s.url) }))).filter((x) => x.url);
+  let at = pics.length > 1 ? 1 : 0; // open on the first model shot when there is one
+  const buy = link(l.checkoutUrl);
+  function draw() {
+    const cur = pics[at] || { label: '', url: '' };
+    page.innerHTML = `<article class="ls">
+      <div>
+        <figure class="ls-stage ${cur.made ? 'as-made' : ''}"><img src="${esc(cur.url)}" alt="${esc(cur.made ? l.title + ', as made' : cur.label + ' of ' + l.title)}"></figure>
+        <p class="ls-cap">${cur.made ? '<span class="stamp" data-status="ready">As made</span><span>The maker’s picture. The piece is made exactly like this.</span>' : `<span class="stamp">AI-styled</span><span>${esc(cur.label)}, styled from the maker’s picture.</span>`}</p>
+        <div class="ls-strip">${pics.map((x, i) => `<button class="ls-thumb" data-i="${i}" aria-current="${i === at}" title="${esc(x.label)}"><img src="${esc(x.url)}" alt="">${x.made ? '<span>AS MADE</span>' : ''}</button>`).join('')}</div>
+      </div>
+      <div>
+        <div class="ls-kicker">${esc(l.material || '')}</div>
+        <h1>${esc(l.title)}</h1>
+        <div class="ls-price">${esc(l.price || 'Price on its way')}</div>
+        <p class="ls-by">Made to order${l.maker ? ' by ' + esc(l.maker) : ''}</p>
+        <a class="btn ls-buy" ${buy ? `href="${esc(buy)}" target="_blank" rel="noopener"` : 'aria-disabled="true"'}>Buy${l.price ? ' for ' + esc(l.price) : ''}</a>
+        <p class="ls-note">${buy ? 'Checkout and delivery run through Arcade.' : 'Not on sale yet. Connect a Checkout link to the Listing page step and run it again.'}</p>
+        ${l.description ? `<p class="ls-copy">${esc(l.description)}</p>` : ''}
+      </div>
+    </article>`;
+    page.querySelectorAll('.ls-thumb').forEach((b) => { b.onclick = () => { at = Number(b.dataset.i); draw(); }; });
+  }
+  draw();
+})();
+</script>
+</body>
+</html>

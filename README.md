@@ -23,8 +23,11 @@ An Arcade key is optional in `.env`. With one, everyone who signs in can use it.
 - **Checks before running.** A step Arcade would refuse is marked "Can't run" with the reason. Jewelry designs can't be refined, for example, and a jewelry category can't go to Build product.
 - **Live status.** Each step shows running, worked with the time taken, or failed with Arcade's own message. Select a step to see every request and raw response.
 - **Fork from anywhere.** Fork copies a step and everything after it, fed by the same steps as the original. Change the copy and run it to compare.
+- **List in a store.** A step that adds a product to a WooCommerce or Shopify store at your own price, as a draft or live. Orders from the store are not sent to Arcade automatically.
 - **Runs.** Success rate, counts of worked and failed runs, the same per step and per flow, typical times, and the reasons steps failed.
-- **Models and keys.** Use the host's Arcade key or your own. Connect any number of AI models (OpenAI, Anthropic, Gemini, OpenRouter, Groq, Ollama, or anything OpenAI-compatible) and test each one in the side panel.
+- **Keys on the page.** Two chips in the top bar show the Arcade key and the AI model. Click one for a small box: company key or your own, paste, Save and test. Claude, OpenAI and Gemini are fully set up, so a key is all anyone adds, and the box lists the text models that key can use.
+- **Models and keys.** The full page: any number of AI models, including OpenRouter, Groq, Ollama, or anything OpenAI-compatible, with every setting open to change.
+- **API watch.** A background check on the server. Every six hours it compares Arcade's published API, its documentation pages and each maker's model list with the last check and reports what changed.
 - **Prompts.** A library of prompts that work, and prompt ideas from a connected model that follow Arcade's rules. Both are one click away on the Design step.
 - **Data.** Flows, runs, prompts and connections are stored per account in one SQLite file. Download yours as JSON, or point the server at another file.
 - **Docs.** The same guide, inside the app.
@@ -54,6 +57,7 @@ All in `.env`. See `.env.example` for the full list.
 | `SHARE_HOST_KEYS` | Let people use the keys in `.env` when they have none |
 | `WORKBENCH_SECRET` | Encrypts stored API keys |
 | `OPENAI_API_KEY` and friends | Optional host keys for AI models |
+| `WATCH_HOURS` | How often the API watch runs. Defaults to 6; 0 turns it off |
 | `DATABASE_PATH` | A SQLite file. Defaults to `data/workbench.db` |
 
 ## Add a capability
@@ -72,6 +76,7 @@ Each capability is one entry in `public/nodes.js`: its inputs, outputs, fields, 
 - `server.js`: pages, sign-in, storage routes, and the allow-listed proxy to `https://platform.arcade.ai/v1`.
 - `lib/store.js`: the SQLite store, accounts, sessions and key encryption.
 - `lib/ai.js`: AI provider presets and the two wire formats.
+- `lib/watch.js`: the API watch.
 - `public/index.html`, `public/workbench.css`, `public/app.css`: the app shell and styles.
 - `public/workbench.js`: the canvas, wiring, checks and runner.
 - `public/nodes.js`: the capability catalogue and the templates.

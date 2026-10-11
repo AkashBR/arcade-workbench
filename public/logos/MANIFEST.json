@@ -1,0 +1,88 @@
+{
+  "generated_by": "~/.claude/skills/official-logo-fetcher",
+  "out_dir": "public/logos",
+  "results": [
+    {
+      "brand": "arcade",
+      "status": "ok",
+      "file": "arcade.svg",
+      "bytes": 2646,
+      "source": "arcade.ai (site wordmark)",
+      "url": "https://www.arcade.ai/_next/static/media/arcade-word.0a3bb62b.svg",
+      "license": "Trademark of Arcade AI. Reference use only."
+    },
+    {
+      "brand": "arcade-mark",
+      "status": "ok",
+      "file": "arcade-mark.png",
+      "bytes": 567,
+      "source": "Google s2 favicons",
+      "url": "https://www.google.com/s2/favicons?domain=arcade.ai&sz=128",
+      "license": "Trademark of Arcade AI. Reference use only."
+    },
+    {
+      "brand": "openai",
+      "status": "ok",
+      "file": "openai.svg",
+      "bytes": 1570,
+      "source": "Simple Icons",
+      "url": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg",
+      "license": "CC0 1.0 (icon); OpenAI trademark belongs to OpenAI."
+    },
+    {
+      "brand": "anthropic",
+      "status": "ok",
+      "file": "anthropic.svg",
+      "bytes": 281,
+      "source": "Simple Icons",
+      "url": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/anthropic.svg",
+      "license": "CC0 1.0 (icon); Anthropic trademark belongs to Anthropic."
+    },
+    {
+      "brand": "claude",
+      "status": "ok",
+      "file": "claude.svg",
+      "bytes": 281,
+      "source": "Simple Icons",
+      "url": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/anthropic.svg",
+      "license": "CC0 1.0 (icon); Anthropic/Claude trademark belongs to Anthropic."
+    },
+    {
+      "brand": "gemini",
+      "status": "ok",
+      "file": "gemini.svg",
+      "bytes": 401,
+      "source": "Simple Icons",
+      "url": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/googlegemini.svg",
+      "license": "CC0 1.0 (icon); Gemini trademark belongs to Google."
+    },
+    {
+      "brand": "openrouter",
+      "status": "ok",
+      "file": "openrouter.svg",
+      "bytes": 684,
+      "source": "Simple Icons",
+      "url": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openrouter.svg",
+      "license": "CC0 1.0 (icon); OpenRouter trademark belongs to OpenRouter."
+    },
+    {
+      "brand": "groq",
+      "status": "ok",
+      "file": "groq.png",
+      "bytes": 965,
+      "source": "Google s2 favicons",
+      "url": "https://www.google.com/s2/favicons?domain=groq.com&sz=128",
+      "license": "Trademark of Groq, Inc. Reference use only."
+    },
+    {
+      "brand": "ollama",
+      "status": "ok",
+      "file": "ollama.svg",
+      "bytes": 4769,
+      "source": "Simple Icons",
+      "url": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/ollama.svg",
+      "license": "CC0 1.0 (icon); Ollama trademark belongs to Ollama."
+    }
+  ],
+  "notice": "Brand logos are trademarks of their respective owners. Fetched marks are suitable for design reference and internal mockups. Confirm each brand's usage guidelines before shipping to production."
+}

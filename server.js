@@ -18,6 +18,7 @@ if (fs.existsSync(envPath)) {
 
 const store = require('./lib/store');
 const ai = require('./lib/ai');
+const watch = require('./lib/watch');
 
 const PORT = Number(process.env.PORT || 8787);
 const BASE = (process.env.ARCADE_BASE_URL || 'https://platform.arcade.ai/v1').replace(/\/$/, '');
@@ -28,6 +29,8 @@ const USER_AGENT = `arcade-workbench/0.2${CONTACT ? ` (${CONTACT})` : ''}`;
 const SHARE_HOST_KEYS = process.env.SHARE_HOST_KEYS !== 'false';
 const ALLOW_SIGNUP = process.env.ALLOW_SIGNUP !== 'false';
 const DEV_LOGIN = !process.env.WORKBENCH_USERS;
+// How often the API watch runs, in hours. 0 turns it off.
+const WATCH_HOURS = process.env.WATCH_HOURS === undefined || process.env.WATCH_HOURS === '' ? 6 : Number(process.env.WATCH_HOURS);
 
 // Only these Arcade endpoints can be called through the proxy.
 const ALLOWED = new Set([
@@ -43,7 +46,8 @@ const ALLOWED = new Set([
   'orders/get', 'orders/list',
 ]);
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon' };
 const GATED_PAGES = new Set(['index.html', 'bench.html']);
 
 class HttpError extends Error {
@@ -106,14 +110,36 @@ async function callArcade(key, endpoint, raw) {
   try { json = JSON.parse(body); } catch { json = { code: 'NON_JSON_RESPONSE', status: upstream.status, message: body.slice(0, 500) || '(empty response)' }; }
   return { status: upstream.status, json, ms, retryAfter: upstream.headers.get('retry-after') };
 }
+// Arcade limits how fast one address may call it. Calls for a key are spaced a little apart, and a
+// "too many requests" answer is waited out and tried again here, so it rarely reaches the person.
+// Retrying is safe: reads change nothing, and anything that starts work carries a requestId.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const lastArcadeCall = new Map();
+async function callArcadePolitely(key, endpoint, raw) {
+  for (let attempt = 0; ; attempt++) {
+    const now = Date.now(), at = Math.max(now, (lastArcadeCall.get(key) || 0) + 300);
+    lastArcadeCall.set(key, at);
+    if (at > now) await sleep(at - now);
+    const r = await callArcade(key, endpoint, raw);
+    if (r.status !== 429 || attempt >= 2) return r;
+    await sleep(Math.min(Number(r.retryAfter) || 5, 12) * 1000);
+  }
+}
+// The two catalogue lists change rarely and every page load asks for them, so they are kept for ten minutes per key.
+const CATALOGUE = new Set(['categories/list', 'models/list']);
+const catalogueCache = new Map();
 async function proxyArcade(req, res, user, endpoint) {
   if (!ALLOWED.has(endpoint)) return send(res, 404, { code: 'NOT_ALLOWED', message: `Endpoint "${endpoint}" is not on this server's allow-list.` });
   const { key } = arcadeKeyFor(user);
   if (!key) return send(res, 400, { code: 'NO_KEY', message: 'No Arcade key. Add your own under Models and keys, or ask the host to share one.' });
   const raw = (await readBody(req, 1024 * 1024)) || '{}';
   try { JSON.parse(raw); } catch (e) { return send(res, 400, { code: 'BAD_BODY', message: `Request body must be JSON: ${e.message}` }); }
+  const cacheKey = CATALOGUE.has(endpoint) && raw.replace(/\s/g, '') === '{}' ? `${endpoint}|${key}` : null;
+  const kept = cacheKey && catalogueCache.get(cacheKey);
+  if (kept && Date.now() - kept.at < 10 * 60000) return send(res, 200, kept.json, { 'X-Upstream-Ms': '0', 'X-Kept': 'yes' });
   try {
-    const r = await callArcade(key, endpoint, raw);
+    const r = await callArcadePolitely(key, endpoint, raw);
+    if (cacheKey && r.status === 200) catalogueCache.set(cacheKey, { at: Date.now(), json: r.json });
     const headers = { 'X-Upstream-Ms': String(r.ms) };
     if (r.retryAfter) headers['Retry-After'] = r.retryAfter;
     send(res, r.status, r.json, headers);
@@ -249,7 +275,7 @@ on('POST', '/api/connections/:id/test', async ({ user, params, body }) => {
       need(key, 400, 'NO_KEY', 'No Arcade key to test. Add your own, or ask the host to share one.');
       const r = await callArcade(key, 'models/list', '{}');
       need(r.status === 200, r.status, r.json.code || 'ARCADE_ERROR', r.json.message || `Arcade answered ${r.status}.`);
-      result = { ok: true, reply: `Arcade accepted the key (${source === 'own' ? 'your own' : "the host's"}). ${r.json.items?.length ?? 0} generation models available.` };
+      result = { ok: true, reply: `Arcade accepted the key (${source === 'own' ? 'your own' : 'the company key'}). ${r.json.items?.length ?? 0} generation models available.` };
     } else {
       const reply = await ai.chat(c, aiKeyFor(c), { user: text(body.prompt, 2000).trim() || 'Reply with the single word: ready' });
       result = { ok: true, reply: reply.trim().slice(0, 1500) || '(the model returned no text)' };
@@ -265,6 +291,84 @@ on('POST', '/api/connections/:id/models', async ({ user, params }) => {
   need(c.kind !== 'arcade', 400, 'NOT_AI', 'Arcade has no model list here.');
   try { return { models: await ai.listModels(c, aiKeyFor(c)) }; }
   catch (e) { throw e instanceof HttpError ? e : new HttpError(502, 'PROVIDER_ERROR', e.message); }
+});
+
+// Quick connect: the two keys a person needs, set from the bench itself. Everything but the key is already filled in.
+const QUICK = ['anthropic', 'openai', 'gemini'];
+function connectSummary(user) {
+  const rows = store.all('SELECT * FROM connections WHERE user_id = ? ORDER BY created_at', user.id);
+  const arc = rows.find((c) => c.kind === 'arcade');
+  const arcadeHost = Boolean(HOST_KEY && SHARE_HOST_KEYS);
+  return {
+    arcade: { source: arcadeKeyFor(user).source, hostKeyAvailable: arcadeHost, hasOwnKey: Boolean(arc?.key_enc), keyHint: arc?.key_hint || null, keyMode: arc ? arc.key_mode : arcadeHost ? 'host' : 'own', keyUrl: 'https://studio.arcade.ai/settings/api-keys' },
+    ai: rows.filter((c) => c.kind !== 'arcade').map(publicConnection),
+    providers: QUICK.map((id) => { const p = ai.preset(id); return { id, name: p.short, keyUrl: p.keyUrl, hostKeyAvailable: Boolean(hostKeyFor(id)) }; }),
+  };
+}
+on('GET', '/api/connect', ({ user }) => connectSummary(user));
+on('POST', '/api/connect', async ({ user, body }) => {
+  const provider = text(body.provider, 20), keyMode = body.keyMode === 'host' ? 'host' : 'own', apiKey = text(body.apiKey, 400).trim();
+  need(provider === 'arcade' || QUICK.includes(provider), 422, 'BAD_PROVIDER', 'Unknown provider.');
+  const started = Date.now();
+  let test, id, before = null;
+  if (provider === 'arcade') {
+    need(keyMode === 'own' || (HOST_KEY && SHARE_HOST_KEYS), 400, 'NO_HOST_KEY', 'No company key is set up for Arcade. Add your own.');
+    let c = store.get("SELECT * FROM connections WHERE user_id = ? AND kind = 'arcade'", user.id);
+    need(keyMode === 'host' || apiKey || c?.key_enc, 422, 'NO_KEY', 'Paste your Arcade key.');
+    before = c || null;
+    if (!c) { id = store.id(); store.run("INSERT INTO connections (id, user_id, kind, name, key_mode, created_at) VALUES (?, ?, 'arcade', 'Arcade', ?, ?)", id, user.id, keyMode, store.now()); } else id = c.id;
+    store.run('UPDATE connections SET key_mode = ? WHERE id = ?', keyMode, id);
+    if (apiKey && keyMode === 'own') store.run('UPDATE connections SET key_enc = ?, key_hint = ? WHERE id = ?', store.seal(apiKey), hint(apiKey), id);
+    const { key } = arcadeKeyFor(user);
+    try {
+      const r = await callArcade(key, 'models/list', '{}');
+      test = r.status === 200 ? { ok: true, reply: `Arcade accepted the key. ${r.json.items?.length ?? 0} generation models available.` }
+        : { ok: false, status: r.status, error: `${r.status}: ${r.json.message || 'Arcade did not accept the key.'}` };
+    } catch (e) { test = { ok: false, error: `Could not reach Arcade: ${e.cause?.code || e.message}` }; }
+    test.ms = Date.now() - started;
+  } else {
+    const p = ai.preset(provider);
+    need(keyMode === 'own' || hostKeyFor(provider), 400, 'NO_HOST_KEY', `No company key is set up for ${p.short}. Add your own.`);
+    let c = store.get('SELECT * FROM connections WHERE user_id = ? AND preset = ? ORDER BY created_at LIMIT 1', user.id, provider);
+    need(keyMode === 'host' || apiKey || c?.key_enc, 422, 'NO_KEY', `Paste your ${p.short} key.`);
+    before = c || null;
+    if (!c) {
+      id = store.id();
+      store.run('INSERT INTO connections (id, user_id, kind, preset, name, base_url, model, key_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', id, user.id, p.kind, p.id, p.short, p.baseUrl, p.model, keyMode, store.now());
+    } else id = c.id;
+    store.run('UPDATE connections SET key_mode = ? WHERE id = ?', keyMode, id);
+    if (apiKey && keyMode === 'own') store.run('UPDATE connections SET key_enc = ?, key_hint = ? WHERE id = ?', store.seal(apiKey), hint(apiKey), id);
+    c = ownConnection(user, id);
+    test = await ai.connectTest(c, aiKeyFor(c));
+    if (test.ok && test.model !== c.model) store.run('UPDATE connections SET model = ? WHERE id = ?', test.model, id);
+  }
+  test.at = store.now();
+  // A key that does not work is not kept: the connection goes back to how it was.
+  if (!test.ok && !before) { store.run('DELETE FROM connections WHERE id = ?', id); id = null; }
+  else if (!test.ok) store.run('UPDATE connections SET key_mode = ?, key_enc = ?, key_hint = ? WHERE id = ?', before.key_mode, before.key_enc, before.key_hint, id);
+  else store.run('UPDATE connections SET last_test = ? WHERE id = ?', JSON.stringify(test), id);
+  return { test, connectionId: id, ...connectSummary(user) };
+});
+
+// The text models a connected provider offers right now, and switching to one of them.
+const quickConnection = (user, provider) => {
+  need(QUICK.includes(provider), 422, 'BAD_PROVIDER', 'Unknown provider.');
+  const c = store.get('SELECT * FROM connections WHERE user_id = ? AND preset = ? ORDER BY created_at LIMIT 1', user.id, provider);
+  need(c, 404, 'NOT_CONNECTED', 'Connect this model first.');
+  return c;
+};
+on('GET', '/api/connect/models', async ({ user, query }) => {
+  const c = quickConnection(user, query.get('provider'));
+  try { return { model: c.model, models: (await ai.listModels(c, aiKeyFor(c))).filter(ai.isTextModel) }; }
+  catch (e) { throw e instanceof HttpError ? e : new HttpError(502, 'PROVIDER_ERROR', e.message); }
+});
+on('POST', '/api/connect/model', async ({ user, body }) => {
+  const c = quickConnection(user, text(body.provider, 20)), model = text(body.model, 120).trim();
+  need(model, 422, 'NO_MODEL', 'Choose a model.');
+  const test = await ai.connectTest({ ...c, model }, aiKeyFor(c), { exact: true });
+  test.at = store.now();
+  if (test.ok) store.run('UPDATE connections SET model = ?, last_test = ? WHERE id = ?', model, JSON.stringify(test), c.id);
+  return { test, connectionId: c.id, ...connectSummary(user) };
 });
 
 // prompts
@@ -292,6 +396,24 @@ on('POST', '/api/ai/suggest', async ({ user, body }) => {
   const brief = ai.suggestBrief({ world: body.world, category: text(body.category, 80), materials: Array.isArray(body.materials) ? body.materials.slice(0, 20).map((m) => text(m, 60)) : [], idea: text(body.idea, 600), count: body.count });
   try { return { suggestions: ai.parseSuggestions(await ai.chat(c, aiKeyFor(c), brief)), model: c.model }; }
   catch (e) { throw e instanceof HttpError ? e : new HttpError(e.status && e.status < 500 ? 400 : 502, 'PROVIDER_ERROR', e.message); }
+});
+
+// The API watch: what the background check last found, and running it now.
+const watchOptions = (keyFor) => ({ usedEndpoints: [...ALLOWED], userAgent: USER_AGENT, keyFor });
+const companyKeyFor = (presetId) => { const env = ai.preset(presetId)?.env; return env ? (process.env[env] || '').trim() : ''; };
+let lastManualWatch = 0;
+on('GET', '/api/watch', () => ({ everyHours: WATCH_HOURS, ...watch.report() }));
+on('POST', '/api/watch/run', async ({ user }) => {
+  need(Date.now() - lastManualWatch > 30000, 429, 'SLOW_DOWN', 'The watch ran a moment ago. Try again in half a minute.');
+  lastManualWatch = Date.now();
+  // Where there is no company key for a maker, the person who asked lends their own for this one check.
+  await watch.runAll(watchOptions((presetId) => {
+    const company = companyKeyFor(presetId);
+    if (company) return company;
+    const mine = store.get("SELECT * FROM connections WHERE user_id = ? AND preset = ? AND key_mode = 'own' AND key_enc IS NOT NULL LIMIT 1", user.id, presetId);
+    return mine ? store.unseal(mine.key_enc) : '';
+  }));
+  return { everyHours: WATCH_HOURS, ...watch.report() };
 });
 
 // data: where it lives, taking it out, and pointing the server at another database
@@ -333,7 +455,8 @@ const server = http.createServer(async (req, res) => {
         const user = userFrom(req);
         if (!r.open && !user) throw new HttpError(401, 'SIGN_IN', 'Sign in first.');
         const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readJson(req);
-        return send(res, 200, await r.handler({ req, res, user, params: m.groups || {}, query: url.searchParams, body }));
+        const out = await r.handler({ req, res, user, params: m.groups || {}, query: url.searchParams, body });
+        return res.writableEnded || res.headersSent ? undefined : send(res, 200, out); // a handler may send a file itself
       }
       throw new HttpError(404, 'NOT_FOUND', 'No such endpoint.');
     }
@@ -354,6 +477,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Studio (model shots) keeps its own routes, so it can change without touching the rest.
+require('./lib/stores').register({ on, store, need, text, HttpError, arcadeKeyFor, callArcade });
+require('./lib/studio').register({ on, store, need, text, HttpError, arcadeKeyFor, callArcade, aiKeyFor, hostKeyFor });
+
 store.init();
 seedAccounts();
 // Bound to this machine only: the sign-in is a light one, and the server holds live keys.
@@ -362,4 +489,6 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`Database: ${store.info().path}`);
   console.log(HOST_KEY ? `Arcade key loaded from the environment${SHARE_HOST_KEYS ? ', shared with everyone who signs in.' : ', not shared.'}` : 'No ARCADE_API_KEY in the environment: people add their own key after signing in.');
   if (DEV_LOGIN) console.log('Using the default sign-in (admin / admin). Set WORKBENCH_USERS before letting anyone else reach this server.');
+  console.log(WATCH_HOURS > 0 ? `API watch: checking Arcade and the model makers now, then every ${WATCH_HOURS} hours.` : 'API watch is off (WATCH_HOURS=0).');
+  watch.start(watchOptions(companyKeyFor), WATCH_HOURS);
 });

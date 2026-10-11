@@ -36,6 +36,7 @@
     rules: ['Arcade does not say whether a saved design is print or jewelry. If it is jewelry, refine steps after it will fail.'],
     outputs: [{ key: 'pattern', type: 'pattern', label: 'Design' }],
     fields: [{ key: 'patternId', kind: 'pick', list: 'patterns/list', label: 'Design', idKey: 'patternId' }],
+    summary: (n) => n.cfg.pickLabel || 'No design chosen yet',
     world: () => null,
     check: (n) => (n.cfg.patternId ? [] : [block('Choose a saved design.')]),
     run: async (n, inp, ctx) => ({ pattern: await ctx.readPattern(n.cfg.patternId, null) }),
@@ -46,6 +47,7 @@
     blurb: 'Starts from a product already on your account.',
     outputs: [{ key: 'product', type: 'product', label: 'Product' }],
     fields: [{ key: 'productId', kind: 'pick', list: 'products/list', label: 'Product', idKey: 'productId' }],
+    summary: (n) => n.cfg.pickLabel || 'No product chosen yet',
     world: (n) => n.out?.product?.world ?? null,
     check: (n) => (n.cfg.productId ? [] : [block('Choose a saved product.')]),
     run: async (n, inp, ctx) => ({ product: await ctx.readProduct(n.cfg.productId, 1, null) }),
@@ -74,6 +76,7 @@
       { key: 'modelId', kind: 'model', label: 'Style model', printOnly: true },
       { key: 'colors', kind: 'text', label: 'Colors', placeholder: '#1F3A8A, #F4EDE0', printOnly: true },
     ],
+    summary: (n) => String(n.cfg.prompt || '').trim() || 'No prompt yet',
     world: (n, g) => (g.connected(n, 'category') ? g.inWorld(n, 'category') : 'print'),
     check: (n, g) => {
       const out = [];
@@ -181,6 +184,7 @@
     inputs: [{ key: 'pattern', type: 'pattern', label: 'Design' }, { key: 'category', type: 'category', label: 'Category' }],
     outputs: [{ key: 'product', type: 'product', label: 'Product' }],
     fields: [{ key: 'selections', kind: 'options', label: 'Options' }, { key: 'fill', kind: 'check', label: 'Fill the product if the shapes don’t match' }],
+    summary: (n) => { const v = Object.values(n.cfg.selections || {}); return v.length ? v.join(', ') : 'Arcade picks the options'; },
     world: () => 'print',
     check: (n, g) => {
       const out = [];
@@ -203,13 +207,25 @@
     title: 'Price', group: 'Product', endpoint: 'products/get', worlds: BOTH, cost: 'read',
     blurb: 'Reads the guaranteed unit price, maker and images for a quantity.',
     rules: [
+      'Arcade and its maker set the price. It can\u2019t be set or marked up through the API, and Arcade\u2019s checkout charges that price.',
+      'The price is only known after the product is built. Metal, stones, size and quantity are what move it.',
       'The price is for one unit at the quantity you ask for, before volume discount.',
       'The price can come back empty for a moment after a product is built. Run it again.',
       'Image links expire. Running this step again renews them.',
     ],
     inputs: [{ key: 'product', type: 'product', label: 'Product' }],
     outputs: [{ key: 'product', type: 'product', label: 'Product' }],
-    fields: [{ key: 'quantity', kind: 'number', label: 'Quantity', default: 1, min: 1 }],
+    fields: [{ key: 'min', kind: 'number', label: 'Price you want, from', min: 0 }, { key: 'max', kind: 'number', label: 'Up to', min: 0 },
+      { key: 'quantity', kind: 'number', label: 'Quantity', default: 1, min: 1 }],
+    summary: (n) => `Quantity ${n.cfg.quantity || 1}${n.cfg.min || n.cfg.max ? `, wanted ${n.cfg.min ? '$' + n.cfg.min : 'any'} to ${n.cfg.max ? '$' + n.cfg.max : 'any'}` : ''}`,
+    // Arcade sets the price and it is only known once the product exists, so a range can be checked, not requested.
+    check: (n) => {
+      const price = Number(n.out?.product?.unitPrice?.amount), lo = Number(n.cfg.min), hi = Number(n.cfg.max);
+      if (!price) return [];
+      if (hi && price > hi) return [warn(`$${price.toFixed(2)} is above the $${hi} you wanted. Fork the Design step and try a cheaper metal, no stones, or a simpler shape.`)];
+      if (lo && price < lo) return [warn(`$${price.toFixed(2)} is below the $${lo} you wanted.`)];
+      return [];
+    },
     world: (n, g) => g.inWorld(n, 'product') ?? null,
     run: async (n, inp, ctx) => ({ product: await ctx.readProduct(inp.product.productId, Math.max(1, int(n.cfg.quantity, 1)), inp.product.world) }),
   });
@@ -227,6 +243,7 @@
     outputs: [{ key: 'checkout', type: 'checkout', label: 'Checkout' }],
     fields: [{ key: 'quantity', kind: 'number', label: 'Quantity each', default: 1, min: 1, max: 1000 },
       { key: 'dropShip', kind: 'check', label: 'Drop-ship to the buyer', default: true }],
+    summary: (n) => `Quantity ${n.cfg.quantity || 1} each${n.cfg.dropShip ? ', drop-ship' : ''}`,
     world: (n, g) => g.inWorld(n, 'product') ?? null,
     check: (n) => (int(n.cfg.quantity, 1) === 1 && !n.cfg.dropShip
       ? [warn('Quantity 1 without drop-ship returns 412 unless the account has a subscription.')] : []),
@@ -266,7 +283,7 @@
 
   // Starter flows. Categories are named, not hard-coded: IDs are looked up from the account.
   const TEMPLATES = [
-    { id: 'jewelry', name: 'Jewelry: prompt to checkout link',
+    { id: 'jewelry', name: 'Jewelry: prompt to checkout link', title: 'Jewelry from a prompt', blurb: 'Category, design, price and a checkout link', thumb: 'Rings',
       nodes: [
         { id: 'c1', type: 'category', x: 40, y: 80, cfg: { categoryName: 'Rings' } },
         { id: 'd1', type: 'design', x: 370, y: 40, cfg: { prompt: 'A 925 sterling silver ring with a wide hammered band, no stones' } },
@@ -274,7 +291,7 @@
         { id: 'k1', type: 'checkout', x: 1030, y: 40, cfg: { quantity: 1, dropShip: true } },
       ],
       edges: [['c1', 'category', 'd1', 'category'], ['d1', 'product', 'p1', 'product'], ['p1', 'product', 'k1', 'product']] },
-    { id: 'variations', name: 'Variations: one ring in three metals',
+    { id: 'variations', name: 'Variations: one ring in three metals', title: 'Compare variations', blurb: 'One ring in three metals, side by side', thumb: 'Dainty Diamond Ring',
       nodes: [
         { id: 'c1', type: 'category', x: 40, y: 480, cfg: { categoryName: 'Rings' } },
         { id: 'd1', type: 'design', x: 370, y: 40, cfg: { prompt: 'A 925 sterling silver signet ring with an oval face, no stones' } },
@@ -286,7 +303,7 @@
       ],
       edges: [['c1', 'category', 'd1', 'category'], ['c1', 'category', 'd2', 'category'], ['c1', 'category', 'd3', 'category'],
         ['d1', 'product', 'p1', 'product'], ['d2', 'product', 'p2', 'product'], ['d3', 'product', 'p3', 'product']] },
-    { id: 'print', name: 'Print: design, edit, product, price',
+    { id: 'print', name: 'Print: design, edit, product, price', title: 'Print product from a prompt', blurb: 'Design, edit, product and price', thumb: 'Napkins',
       nodes: [
         { id: 'd1', type: 'design', x: 40, y: 40, cfg: { prompt: 'Small blue and white block-print florals on natural linen' } },
         { id: 'e1', type: 'edit', x: 370, y: 40, cfg: { instruction: 'Make the flowers larger and add a thin indigo border' } },
@@ -295,7 +312,7 @@
         { id: 'p1', type: 'price', x: 1030, y: 40, cfg: { quantity: 4 } },
       ],
       edges: [['d1', 'pattern', 'e1', 'pattern'], ['e1', 'pattern', 'b1', 'pattern'], ['c1', 'category', 'b1', 'category'], ['b1', 'product', 'p1', 'product']] },
-    { id: 'refused', name: 'What Arcade refuses, and why',
+    { id: 'refused', name: 'What Arcade refuses, and why', title: 'See what Arcade refuses', blurb: 'The blocked cases, each with its reason', thumb: 'Pendant Necklace',
       nodes: [
         { id: 'c1', type: 'category', x: 40, y: 330, cfg: { categoryName: 'Pendant Necklace' } },
         { id: 'd1', type: 'design', x: 370, y: 280, cfg: { prompt: 'A 14k gold vermeil pendant necklace with a small crescent moon' } },
@@ -307,5 +324,25 @@
         ['c1', 'category', 'b1', 'category'], ['d1', 'product', 'p1', 'product']] },
   ];
 
-  window.ArcadeNodes = { NODES, GROUPS, TEMPLATES, UNAVAILABLE };
+  // Small line drawings: one per kind of step, and one per kind of jewelry (Arcade has no pictures for those categories).
+  const ICONS = {
+    category: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    saved: '<path d="M7 4h10v16l-5-3.5L7 20z"/>',
+    design: '<path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M18 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>',
+    refine: '<path d="M4 7h9M19 7h1M4 12h3M13 12h7M4 17h10M20 17h0"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="12" r="2.2"/><circle cx="17" cy="17" r="2.2"/>',
+    product: '<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>',
+    price: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.4"/>',
+    checkout: '<path d="M10.5 13.5a4 4 0 0 0 5.6 0l3-3a4 4 0 0 0-5.6-5.6l-1.2 1.2"/><path d="M13.5 10.5a4 4 0 0 0-5.6 0l-3 3a4 4 0 0 0 5.6 5.6l1.2-1.2"/>',
+    order: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 12.5l2.3 2.3 3.9-4.3"/>',
+    company: '<rect x="5" y="4" width="14" height="16" rx="1.5"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2M10.5 20v-3.5h3V20"/>',
+    key: '<circle cx="8" cy="15.5" r="3.5"/><path d="M10.6 13L19 4.500M15.500 8l2.500 2.500M13 10.500l1.800 1.800"/>',
+    ring: '<circle cx="12" cy="15" r="5.5"/><path d="M9.6 5.5h4.8l1.6 2.4-4 3.6-4-3.6z"/>',
+    earrings: '<path d="M8 3.5v4M16 3.5v4"/><path d="M8 7.5c-2.6 3-3.4 5-3.4 6.8a3.4 3.4 0 0 0 6.8 0c0-1.8-.8-3.8-3.4-6.800z"/><path d="M16 7.5c-2.6 3-3.4 5-3.4 6.8a3.4 3.4 0 0 0 6.8 0c0-1.8-.8-3.8-3.4-6.800z"/>',
+    necklace: '<path d="M5 3.500c0 7 3 11 7 11s7-4 7-11"/><path d="M12 14.500l2.400 3-2.400 3-2.400-3z"/>',
+    print: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/>',
+  };
+  const iconKey = (def) => ({ savedDesign: 'saved', savedProduct: 'saved' }[def.type] || (def.group === 'Refine' ? 'refine' : ICONS[def.type] ? def.type : 'design'));
+  const glyphKey = (name) => (/earring/i.test(name) ? 'earrings' : /necklace|pendant/i.test(name) ? 'necklace' : /ring/i.test(name) ? 'ring' : 'print');
+
+  window.ArcadeNodes = { NODES, GROUPS, TEMPLATES, UNAVAILABLE, ICONS, iconKey, glyphKey };
 })();

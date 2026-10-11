@@ -1,20 +1,32 @@
 /* Workbench for Arcade.
-   Paper, stone and ink come from Arcade's own palette. Colour is kept for state:
-   green is done, amber needs you, red failed, and citron marks whatever is running right now. */
+   The palette is Clay's (clay.com): oat neutrals and one fruit colour per job.
+   Matcha is done, tangerine needs you, pomegranate failed, and blue marks whatever is working right now. */
 :root {
-  --bench: #F7F4F0; --paper: #FFFFFF; --well: #FBFAF7; --panel: #F3EFE8; --stone: #E9E5D8; --stone-2: #DED9C9; --line: #E2DDD0; --grid: #D5CFBF;
-  --ink: #0F0F0F; --ink-2: #55544C; --ink-3: #76746A;
-  --citron: #FCFF7B;
-  --ok: #1E6B45; --ok-soft: #E1F1E6; --hold: #7A4F00; --hold-soft: #FBEBC8; --bad: #A3281C; --bad-soft: #FBE3DE;
+  /* Colours are Clay's own swatches (clay.com): oat for the neutrals, one fruit per job. */
+  --bench: #F9F8F6; --paper: #FFFFFF; --well: #FFFCFA; --panel: #F3F2ED; --stone: #EEE9DF; --stone-2: #DAD4C8; --line: #E4DFD4; --grid: #DAD4C8;
+  --ink: #1B1A18; --ink-2: #55534E; --ink-3: #77736C;
+  /* Blue is the one live colour: it only ever means "this is working right now". --run is the mark, --citron the soft
+     fill behind it. (--citron keeps its old name because other stylesheets use it; it was yellow, which read as a warning.) */
+  --run: #2447D6; --citron: #DDE6FC;
+  --ok: #02693E; --ok-soft: #DBFFE0; --hold: #9F3E15; --hold-soft: #FFE9D5; --bad: #B21A3F; --bad-soft: #FFEBEC;
   --serif: "Newsreader", "Iowan Old Style", Georgia, serif;
   --sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   /* Names other stylesheets in this app rely on (app.css). The primary action is ink, so "wire" is ink too. */
   --wire: var(--ink); --wire-soft: var(--stone);
-  --gold: #5E5310; --gold-soft: #F3EEC5; --madder: #8C3A4C; --madder-soft: #F4E4E6;
+  --gold: #7F500A; --gold-soft: #FFF8D2; --madder: #8B045C; --madder-soft: #FFE5F7;
   --display: var(--sans); --body: var(--sans);
   --cut: inset(0 round 999px);
+  /* Corners are small and even, as on clay.com: controls 8, cards 10. Only status marks are full pills. */
+  --r-ctl: 8px; --r-card: 10px;
+  /* One fruit per kind of step, so a flow reads at a glance. */
+  --g-start: #0667D9; --g-start-tint: #D7EBFE;      /* blueberry */
+  --g-design: #CC0687; --g-design-tint: #FFE5F7;    /* dragonfruit */
+  --g-refine: #0089AD; --g-refine-tint: #E0F8FF;    /* slushie */
+  --g-product: #9D6A09; --g-product-tint: #FFF8D2;  /* lemon */
+  --g-sell: #078A52; --g-sell-tint: #DBFFE0;        /* matcha */
+  --g-studio: #5C15CC; --g-studio-tint: #E9E4FF;    /* ube */
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -27,12 +39,12 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .muted { color: var(--ink-3); }
 
 /* ---------- buttons ---------- */
-.btn { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; border: 1px solid var(--ink); background: var(--ink); color: #fff; border-radius: 999px; font: 600 13px/1 var(--sans); cursor: pointer; white-space: nowrap; transition: background 0.2s var(--ease), border-color 0.2s var(--ease); }
-.btn:hover { background: #2B2B2B; border-color: #2B2B2B; }
+.btn { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; border: 1px solid var(--ink); background: var(--ink); color: #fff; border-radius: var(--r-ctl); font: 600 13px/1 var(--sans); cursor: pointer; white-space: nowrap; transition: background 0.2s var(--ease), border-color 0.2s var(--ease); }
+.btn:hover { background: #363430; border-color: #363430; }
 .btn.ghost { background: var(--paper); color: var(--ink); border-color: var(--line); font-weight: 500; }
 .btn.ghost:hover { background: var(--stone); border-color: var(--stone); }
 .btn.wire { background: var(--ink); border-color: var(--ink); }
-.btn.wire:hover { background: #2B2B2B; border-color: #2B2B2B; }
+.btn.wire:hover { background: #363430; border-color: #363430; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.small { height: 26px; padding: 0 10px; font-size: 12px; }
 
@@ -43,7 +55,7 @@ a { color: var(--ink); text-underline-offset: 3px; }
 [data-status="ready"] > .n-head .stamp, .stamp[data-status="ready"] { background: var(--paper); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 [data-status="blocked"] > .n-head .stamp, .stamp[data-status="blocked"] { background: var(--hold-soft); color: var(--hold); }
 [data-status="waiting"] > .n-head .stamp, .stamp[data-status="waiting"] { background: var(--stone); color: var(--ink-2); }
-[data-status="running"] > .n-head .stamp, .stamp[data-status="running"] { background: var(--citron); color: var(--ink); }
+[data-status="running"] > .n-head .stamp, .stamp[data-status="running"] { background: var(--citron); color: var(--run); }
 [data-status="ok"] > .n-head .stamp, .stamp[data-status="ok"] { background: var(--ok-soft); color: var(--ok); }
 [data-status="stale"] > .n-head .stamp, .stamp[data-status="stale"] { background: var(--hold-soft); color: var(--hold); }
 [data-status="error"] > .n-head .stamp, .stamp[data-status="error"] { background: var(--bad-soft); color: var(--bad); }
@@ -108,22 +120,22 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
 #wires { position: absolute; left: -5000px; top: -5000px; width: 16000px; height: 16000px; pointer-events: none; overflow: visible; }
 .edge .hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
-.edge .line { fill: none; stroke: #BDB7A8; stroke-width: 2; pointer-events: none; }
+.edge .line { fill: none; stroke: #C0BBAF; stroke-width: 2; pointer-events: none; }
 .edge:hover .line { stroke: var(--ink-2); }
 .edge.done .line { stroke: var(--ink-2); }
-.edge.blocked .line { stroke: #C39A45; stroke-dasharray: 3 5; }
-/* A wire that is carrying a call: an ink dash moving over a citron band. */
-.edge.flowing .hit { stroke: var(--citron); stroke-width: 7; stroke-linecap: round; }
-.edge.flowing .line { stroke: var(--ink); stroke-dasharray: 7 6; animation: flow 0.7s linear infinite; }
+.edge.blocked .line { stroke: #FC8936; stroke-dasharray: 3 5; }
+/* A wire that is carrying a call: small blue marks moving along it. */
+.edge.flowing .hit { stroke: transparent; }
+.edge.flowing .line { stroke: var(--run); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 2 7; animation: flow 0.5s linear infinite; }
 .edge.sel .line { stroke: var(--ink); stroke-width: 3; }
 .edge .cut-btn { pointer-events: all; cursor: pointer; }
 .edge .cut-btn circle { fill: var(--paper); stroke: var(--ink); stroke-width: 1.5; }
 .edge .cut-btn path { stroke: var(--ink); stroke-width: 1.6; fill: none; }
 #wire-temp { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 5 5; }
-@keyframes flow { to { stroke-dashoffset: -13; } }
+@keyframes flow { to { stroke-dashoffset: -9; } }
 
-.zoom { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 2px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 3px; cursor: default; }
-.zoom button { border: 0; background: transparent; width: 28px; height: 26px; border-radius: 999px; cursor: pointer; font-size: 15px; transition: background 0.2s var(--ease); }
+.zoom { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 2px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 3px; cursor: default; }
+.zoom button { border: 0; background: transparent; width: 28px; height: 26px; border-radius: var(--r-ctl); cursor: pointer; font-size: 15px; transition: background 0.2s var(--ease); }
 .zoom button.fit { width: auto; padding: 0 10px; font-size: 12px; font-weight: 500; }
 .zoom button:hover { background: var(--stone); }
 .zoom span { font: 400 11px/1 var(--mono); color: var(--ink-3); min-width: 38px; text-align: center; }
@@ -132,13 +144,13 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .empty b { display: block; font: 400 28px/32px var(--serif); letter-spacing: -0.02em; color: var(--ink); margin-bottom: 8px; }
 
 /* ---------- step card ---------- */
-.node { position: absolute; width: 264px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; cursor: default; transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease); }
-.node[data-status="blocked"] { border-style: dashed; border-color: #D2AE66; }
-.node[data-status="waiting"] { border-style: dashed; border-color: #CBC5B4; }
-.node[data-status="error"] { border-color: #DFA69E; }
+.node { position: absolute; width: 264px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-card); cursor: default; transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease); }
+.node[data-status="blocked"] { border-style: dashed; border-color: #FFA775; }
+.node[data-status="waiting"] { border-style: dashed; border-color: #DAD4C8; }
+.node[data-status="error"] { border-color: #FC7981; }
 .node.sel { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
-.node[data-status="running"] { border-color: var(--ink); box-shadow: 0 0 0 4px var(--citron); }
-.n-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px 12px 9px; cursor: grab; border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0; touch-action: none; }
+.node[data-status="running"] { border-color: var(--run); box-shadow: 0 0 0 3px var(--citron); }
+.n-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 10px 12px 9px; cursor: grab; border-bottom: 1px solid var(--line); border-radius: var(--r-card) var(--r-card) 0 0; touch-action: none; }
 .n-head:active { cursor: grabbing; }
 .n-head h3 { margin: 0; font: 600 15px/20px var(--sans); letter-spacing: -0.005em; }
 .n-ep { display: block; font: 400 11px/14px var(--mono); color: var(--ink-3); margin-bottom: 2px; }
@@ -149,19 +161,19 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .n-out { justify-items: end; }
 .port { position: relative; font-size: 12px; line-height: 16px; color: var(--ink-2); padding: 1px 13px; display: flex; align-items: center; gap: 5px; }
 .port em { font-style: normal; color: var(--ink-3); font-size: 11px; }
-.port .dot { position: absolute; top: 50%; width: 13px; height: 13px; margin-top: -6.5px; border-radius: 50%; background: var(--paper); border: 2px solid #A9A496; transition: border-color 0.2s var(--ease), background 0.2s var(--ease); }
+.port .dot { position: absolute; top: 50%; width: 13px; height: 13px; margin-top: -6.5px; border-radius: 50%; background: var(--paper); border: 2px solid #9F9B93; transition: border-color 0.2s var(--ease), background 0.2s var(--ease); }
 .port.in .dot { left: -7px; }
 .port.out .dot { right: -7px; }
 .port.out { cursor: crosshair; touch-action: none; }
 .port.out:hover { color: var(--ink); }
-.port.out:hover .dot { border-color: var(--ink); background: var(--citron); }
+.port.out:hover .dot { border-color: var(--run); background: var(--citron); }
 .port.linked .dot { background: var(--ink-2); border-color: var(--ink-2); }
 .port.off { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--stone-2); }
 .port.off .dot { border-style: dotted; background: var(--well); }
 .port[data-type="category"] .dot { border-radius: 3px; }
 .port[data-type="product"] .dot { border-radius: 50% 50% 3px 3px; }
 .port[data-type="checkout"] .dot { transform: rotate(45deg); border-radius: 2px; }
-.wiring .port.in.can .dot { border-color: var(--ink); background: var(--citron); box-shadow: 0 0 0 4px rgba(252, 255, 123, 0.7); }
+.wiring .port.in.can .dot { border-color: var(--run); background: var(--citron); box-shadow: 0 0 0 4px rgba(36, 71, 214, 0.16); }
 .wiring .port.in.cant { opacity: 0.3; }
 
 .n-fields { padding: 10px 12px 2px; display: grid; gap: 10px; }
@@ -207,6 +219,16 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .n-foot .btn.ghost { border-color: transparent; color: var(--ink-2); }
 .n-foot .btn.ghost:hover { background: var(--stone); color: var(--ink); }
 
+/* ---------- kinds of step ----------
+   The icon sits on a tinted tile in its group's colour, on the card and in the list. */
+.node, .cap { --g: var(--g-refine); --g-tint: var(--g-refine-tint); }
+.node[data-group="start"], .cap[data-type="category"], .cap[data-type="savedDesign"], .cap[data-type="savedProduct"] { --g: var(--g-start); --g-tint: var(--g-start-tint); }
+.node[data-group="design"], .cap[data-type="design"] { --g: var(--g-design); --g-tint: var(--g-design-tint); }
+.node[data-group="product"], .cap[data-type="product"], .cap[data-type="price"] { --g: var(--g-product); --g-tint: var(--g-product-tint); }
+.node[data-group="sell"], .cap[data-type="checkout"], .cap[data-type="order"], .cap[data-type="listing"] { --g: var(--g-sell); --g-tint: var(--g-sell-tint); }
+.node[data-group="studio"], .node[data-group="photos"], .cap[data-type="modelShots"] { --g: var(--g-studio); --g-tint: var(--g-studio-tint); }
+.node:not([data-group]) { --g: var(--ink-2); --g-tint: var(--stone); }
+
 /* ---------- inspector ---------- */
 .inspector h2 { font: 400 26px/30px var(--serif); letter-spacing: -0.02em; margin: 2px 0 6px; }
 .inspector h3 { font: 600 13px/18px var(--sans); color: var(--ink); margin: 24px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); }
@@ -216,7 +238,7 @@ a { color: var(--ink); text-underline-offset: 3px; }
 .i-top .stamp { margin-top: 6px; }
 .rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; line-height: 19px; color: var(--ink-2); }
 .rules li { padding-left: 15px; position: relative; }
-.rules li::before { content: ""; position: absolute; left: 1px; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: #B9B4A6; }
+.rules li::before { content: ""; position: absolute; left: 1px; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: #C0BBAF; }
 .rules li.block::before { background: var(--hold); } .rules li.block { color: var(--hold); font-weight: 500; }
 .rules li.warn::before { background: var(--hold); } .rules li.warn { color: var(--hold); }
 .rules li.fine::before { background: var(--ok); } .rules li.fine { color: var(--ok); }
@@ -238,7 +260,7 @@ details.call pre { margin: 0; padding: 10px; border-top: 1px solid var(--line); 
 .checklist button .why { flex-basis: 100%; font-size: 12px; line-height: 17px; color: var(--ink-2); }
 
 /* ---------- dialog and toast ---------- */
-dialog { border: 0; border-radius: 16px; padding: 0; width: min(520px, calc(100vw - 32px)); max-width: none; color: var(--ink); background: var(--paper); box-shadow: 0 24px 48px -24px rgba(15, 15, 15, 0.4); }
+dialog { border: 0; border-radius: 12px; padding: 0; width: min(520px, calc(100vw - 32px)); max-width: none; color: var(--ink); background: var(--paper); box-shadow: 0 24px 48px -24px rgba(15, 15, 15, 0.4); }
 dialog::backdrop { background: rgba(15, 15, 15, 0.32); }
 dialog form { padding: 24px; }
 dialog h2 { font: 400 24px/28px var(--serif); letter-spacing: -0.02em; margin: 0 0 10px; }
@@ -250,7 +272,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .grid-pick button { border: 1px solid var(--line); background: var(--paper); border-radius: 10px; padding: 6px; cursor: pointer; font-size: 12px; line-height: 16px; text-align: left; overflow: hidden; transition: border-color 0.2s var(--ease); }
 .grid-pick button:hover { border-color: var(--ink); }
 .grid-pick img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 6px; background: var(--stone); }
-.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 13px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity 0.2s var(--ease), transform 0.2s var(--ease); max-width: min(560px, calc(100vw - 32px)); z-index: 50; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: var(--r-ctl); font-size: 13px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity 0.2s var(--ease), transform 0.2s var(--ease); max-width: min(560px, calc(100vw - 32px)); z-index: 50; }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 
 /* ---------- narrower screens ---------- */

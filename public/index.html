@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="workbench.css">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="studio.css">
+<link rel="stylesheet" href="shell.css">
 </head>
 <body data-view="bench">
 <nav class="nav" id="nav" aria-label="Sections"></nav>
@@ -16,26 +18,36 @@
   <input class="name" id="flowName" aria-label="Flow name" maxlength="60">
   <select id="templates" aria-label="Open a flow or start from a template"></select>
   <span class="spacer"></span>
-  <div class="tally" id="tally" aria-live="polite"></div>
-  <span class="key" id="keyState">checking key</span>
-  <button class="btn ghost" id="btnImport">Import</button>
-  <button class="btn ghost" id="btnExport">Export</button>
-  <a class="btn ghost" href="bench.html" style="text-decoration:none" title="The plain test page: every call and its raw response">Raw calls</a>
+  <button class="tally" id="tally" type="button" aria-live="polite" title="Check every step against Arcade's rules"></button>
+  <span class="key-chips" id="keyChips"></span>
+  <details class="more" id="more">
+    <summary class="btn ghost">More</summary>
+    <div class="more-menu">
+      <button type="button" id="btnKeys">Keyboard shortcuts<small>Undo, redo, run, fork</small></button>
+      <button type="button" id="btnExport">Export this flow<small>Saves a .json file</small></button>
+      <button type="button" id="btnImport">Import a flow<small>Opens a .json file</small></button>
+      <a href="bench.html">Raw API calls<small>The plain test page</small></a>
+    </div>
+  </details>
+  <button class="btn ghost" id="btnResults" type="button" title="Everything this flow has made so far">Results</button>
   <button class="btn wire" id="btnRunFlow">Run flow</button>
   <input type="file" id="importFile" accept="application/json,.json" hidden>
 </header>
 
-<div class="shell">
+<div class="shell" data-palette="closed" data-panel="none">
   <aside class="palette" id="palette" aria-label="Capabilities"></aside>
   <main class="canvas" id="canvas" aria-label="Flow canvas">
     <div class="world" id="world">
       <svg id="wires" viewBox="-5000 -5000 16000 16000" aria-hidden="true"><g id="edges"></g><path id="wire-temp" d="" hidden></path></svg>
     </div>
-    <div class="empty" id="empty" hidden><div><b>Nothing on the bench yet</b>Pick a capability on the left, or start from a template.</div></div>
+    <button class="add-step btn ghost" id="btnAdd" type="button">+ Add a step</button>
+    <div class="start" id="start" hidden></div>
     <div class="banner" id="banner" hidden></div>
     <div class="zoom">
       <button id="zoomOut" aria-label="Zoom out">&minus;</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="Zoom in">+</button>
-      <button class="fit" id="zoomFit">Fit</button>
+      <button class="fit" id="zoomFit" aria-label="Fit every step on screen">Fit</button>
+      <button class="fit" id="btnUndo" aria-label="Undo the last change (Ctrl+Z)">Undo</button>
+      <button class="fit" id="btnRedo" aria-label="Redo (Ctrl+Shift+Z)">Redo</button>
     </div>
   </main>
   <aside class="inspector" id="inspector" aria-label="Details"></aside>
@@ -54,6 +66,12 @@
 
 <script src="app.js"></script>
 <script src="nodes.js"></script>
+<script src="studio-node.js"></script>
+<script src="listing-node.js"></script>
+<script src="store-node.js"></script>
 <script src="workbench.js"></script>
+<script src="shell.js"></script>
+<script src="rail.js"></script>
+<script src="logos.js"></script>
 </body>
 </html>

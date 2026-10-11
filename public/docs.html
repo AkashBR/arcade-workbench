@@ -15,20 +15,24 @@
   <h2 id="d-start">Start in three steps</h2>
   <ol>
     <li><b>Sign in.</b> Use the account you were given, or create one on the sign-in page.</li>
-    <li><b>Check your Arcade key.</b> Open Models and keys. If the host shares a key you can start right away. Otherwise paste your own from <a href="https://studio.arcade.ai/settings/api-keys" target="_blank" rel="noopener">Arcade Studio</a> and press Test the key.</li>
-    <li><b>Run a template.</b> On the Bench, pick "Jewelry: prompt to checkout link" and press Run flow.</li>
+    <li><b>Check your Arcade key.</b> The chip in the top bar says whose key is in use. If a company key is set up you can start right away. Otherwise click the chip, paste your own from <a href="https://studio.arcade.ai/settings/api-keys" target="_blank" rel="noopener">Arcade Studio</a>, and press Save and test.</li>
+    <li><b>Pick a workflow.</b> A blank bench asks what you want to make. Click "Jewelry from a prompt", choose your options in the side panel, and press Run flow.</li>
   </ol>
 
   <h2 id="d-bench">The bench</h2>
   <p>The bench is a canvas. Each box is a step, and each step is one thing the Arcade API can do. Wires carry a step's result to the next step.</p>
   <ul>
-    <li><b>Add a step.</b> Click or drag a capability from the left panel.</li>
+    <li><b>Start from a workflow.</b> A blank bench offers whole workflows. One click lays out every step.</li>
+    <li><b>Add a step.</b> Press Add a step, then click or drag one from the list.</li>
+    <li><b>Set a step up.</b> Click a step and its side panel opens. Categories are picture tiles, metals and product options are chips, and anything Arcade can't make is struck through.</li>
     <li><b>Wire steps.</b> Drag from a dot on the right edge of one step to a dot on the left edge of another. Click a wire, then its cross, to remove it.</li>
     <li><b>Run.</b> Run on a step runs that step, and any step before it that has no result yet. Run flow runs every step that has not worked yet, one at a time.</li>
     <li><b>Read the status.</b> Ready, Can't run, Running, Worked or Failed. A step that can't run tells you why before you spend a generation.</li>
     <li><b>Fork.</b> Fork copies a step and everything after it, fed by the same inputs. Change the copy and run it to compare two versions.</li>
-    <li><b>Inspect.</b> Select a step to see its result, Arcade's rules for it, and every request and raw response.</li>
-    <li><b>Keep flows.</b> Flows save to your account as you work. The flow menu opens, duplicates and deletes them. Export and Import move a flow as a file.</li>
+    <li><b>Inspect.</b> The same panel shows the step's result, Arcade's rules for it, and every request and raw response.</li>
+    <li><b>Check the flow.</b> Click the step counts in the top bar to see every step's status in one list.</li>
+    <li><b>Undo.</b> Ctrl+Z (Cmd+Z on a Mac) undoes the last change to the flow: a step added or removed, a wire, a move, a setting. Ctrl+Shift+Z or Ctrl+Y redoes it. Results a step has made are never undone. More shortcuts are listed under More, Keyboard shortcuts.</li>
+    <li><b>Keep flows.</b> Flows save to your account as you work. The flow menu opens, duplicates and deletes them. Under More, Export and Import move a flow as a JSON file.</li>
   </ul>
 
   <h2 id="d-rules">What Arcade allows</h2>
@@ -52,23 +56,33 @@
     <li><b>Not available:</b> upscale (Arcade Studio only), region edits and reference images (not built into the bench yet).</li>
   </ul>
 
+  <h3>Listing in your own store</h3>
+  <p>The "List in a store" step adds a product to a WooCommerce or Shopify store. Connect the store from the step's Store list: its address and its API keys. Set your own price; anything above Arcade's price is your margin. The listing is a draft unless you tick the box. Orders placed in your store are not sent to Arcade automatically: for each one, make a Checkout link here and pay Arcade, and it ships to your buyer.</p>
+
   <h2 id="d-runs">Runs</h2>
   <p>Every step you run is recorded. The Runs page shows the success rate, counts of worked and failed runs, the same numbers per step and per flow, the typical time a step takes, and the reasons steps failed. Use it to see which steps are reliable before you build on them.</p>
 
   <h2 id="d-keys">Models and keys</h2>
   <ul>
-    <li><b>Arcade.</b> Use the host's key if one is shared, or your own. Your own key is used only for your account.</li>
-    <li><b>AI models.</b> Add OpenAI, Anthropic, Gemini, OpenRouter, Groq, a local Ollama, or any service that speaks the OpenAI chat format. Connect as many as you like.</li>
+    <li><b>On the bench.</b> Two chips in the top bar show the Arcade key and the AI model. Click either one for a small box: choose the company key or your own, paste a key if it is yours, and press Save and test.</li>
+    <li><b>Claude, OpenAI and Gemini are ready.</b> All three are fully set up. A key is the only thing you add.</li>
+    <li><b>Company key or your own.</b> The company key is one the workbench's owner has set up for everyone. Your own key is used only for your account.</li>
+    <li><b>Choose the model.</b> Once a key works, the box lists the text models on it, read live from the provider. Image and audio models are left out until a step needs them.</li>
+    <li><b>Other models.</b> The Models and keys page also connects OpenRouter, Groq, a local Ollama, or any service that speaks the OpenAI chat format, with every setting open to change.</li>
     <li><b>Load the model list.</b> After saving a key, press Load models from the provider and pick one. You can also type a model ID.</li>
     <li><b>Test it there.</b> The side panel sends one real request and shows the reply, the time it took, or the provider's error.</li>
     <li><b>Where keys go.</b> Keys are encrypted on the server and never sent back to the browser. The page only shows the first and last characters.</li>
   </ul>
 
+  <h3>API watch</h3>
+  <p>The server checks on its own, every six hours, whether the APIs it depends on have changed. It reads Arcade's published API description, the list of Arcade's documentation pages, and each model maker's live model list, compares them with the last check, and lists what is new, gone or different on the Models and keys page. If a ready-made model is retired, connections on the company key move to the best one left. Makers with no company key are checked when someone presses Check now with their own key connected.</p>
+
   <h2 id="d-prompts">Prompts</h2>
   <ul>
     <li><b>Save prompts that work</b> on the Prompts page, marked for jewelry, print or either.</li>
     <li><b>Ask a model for ideas.</b> Pick a connected model and a category, add a few words, and press Suggest prompts. The model is given Arcade's rules, so the ideas name a metal the category can be made in.</li>
-    <li><b>Use them on the bench.</b> The Design step has two buttons under its prompt: From library and Suggest.</li>
+    <li><b>Pick the model in place.</b> The Model list sits next to the idea box. Its last entry adds an API key or changes the model without leaving the page, and a tick box makes the chosen model your default.</li>
+    <li><b>Use them on the bench.</b> The Design step's panel has two buttons near its prompt. From library picks a saved prompt. Suggest a prompt has the model write one straight into the box, using whatever you had typed as the idea; press it again for another.</li>
   </ul>
 
   <h2 id="d-data">Data</h2>

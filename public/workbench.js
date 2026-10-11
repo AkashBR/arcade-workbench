@@ -2,7 +2,8 @@
 // Capabilities live in nodes.js; nothing in here knows about a specific endpoint.
 (function () {
   'use strict';
-  const { NODES, GROUPS, TEMPLATES, UNAVAILABLE } = window.ArcadeNodes;
+  const { NODES, GROUPS, TEMPLATES, UNAVAILABLE, ICONS, iconKey, glyphKey } = window.ArcadeNodes;
+  const svg = (key, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[key] || ''}</svg>`;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uid = (p) => `${p}-${crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2)}`;
@@ -15,10 +16,12 @@
     read: 'Ready. Reads only, nothing is created.',
     create: 'Ready. Makes something new on your Arcade account, about a minute.',
     checkout: 'Ready. Creates a real checkout. You confirm first.',
+    publish: 'Ready. Adds a product to your store. You confirm first.',
   };
 
   const S = { flow: { id: '', name: '', nodes: [], edges: [] }, flows: [], view: { x: 30, y: 24, k: 1 }, sel: null, selEdge: null,
-    cat: { categories: [], models: [], hasKey: null }, busy: false, batch: null, needFit: false, log: [] };
+    cat: { categories: [], models: [], hasKey: null, options: {}, pending: {} }, busy: false, batch: null, needFit: false, log: [],
+    panel: 'none', palette: 'closed' };
   const els = new Map();
   const renewed = new Set();
 
@@ -195,6 +198,7 @@
       n.out = await def.run(n, inp, ctxFor(n));
       Object.assign(n, { status: 'ok', ms: Date.now() - n.t0, runId: uid('r') });
       n.sig = sigOf(n);
+      keepVersion(n);
     } catch (e) {
       Object.assign(n, { status: 'error', error: { message: e.message, status: e.status || null }, ms: Date.now() - n.t0 });
     } finally {
@@ -205,6 +209,53 @@
     changed();
     return n.status === 'ok';
   }
+  // ---------- versions ----------
+  // A step that makes something keeps every result it has made. One is the final: it is what the step shows
+  // and what the next steps receive. The others stay with the step, so nothing made is ever lost.
+  const versionNote = (n) => String(n.cfg.prompt || n.cfg.instruction || (NODES[n.type].summary ? NODES[n.type].summary(n) : '') || '').slice(0, 300);
+  function versionsOf(n) {
+    if (NODES[n.type].cost !== 'create') return [];
+    if (!n.versions?.length && n.out) { n.versions = [{ id: n.runId || uid('r'), out: n.out, at: null, ms: n.ms ?? null, note: versionNote(n) }]; n.final = n.versions[0].id; }
+    return n.versions || [];
+  }
+  function keepVersion(n) {
+    if (NODES[n.type].cost !== 'create') return;
+    n.versions = (n.versions || []).filter((v) => v.out !== n.out);
+    n.versions.push({ id: n.runId, out: n.out, at: Date.now(), ms: n.ms, note: versionNote(n) });
+    if (n.versions.length > 16) n.versions.shift();
+    n.final = n.runId;
+  }
+  // Choosing another version makes it the final. The steps after this one now hold results made from the old final, so they show as edited.
+  function useVersion(n, id) {
+    const v = versionsOf(n).find((x) => x.id === id);
+    if (!v || n.status === 'running') return;
+    Object.assign(n, { out: v.out, final: v.id, status: 'ok', error: null, runId: uid('r') });
+    n.sig = sigOf(n);
+    changed();
+  }
+  function dropVersion(n, id) {
+    if (id === n.final) return;
+    n.versions = versionsOf(n).filter((v) => v.id !== id);
+    changed();
+  }
+  const versionThumb = (v) => v.out.product?.imageUrl || v.out.pattern?.thumbnailUrl || v.out.pattern?.imageUrl || v.out.shots?.items?.[0]?.url || '';
+  async function renewVersion(n, v) {
+    try {
+      if (v.out.product) v.out.product = await readProduct(v.out.product.productId, v.out.product.quantity || 1, v.out.product.world);
+      if (v.out.pattern) v.out.pattern = await readPattern(v.out.pattern.patternId, v.out.pattern.world);
+      renderInspector(); save();
+    } catch { /* the old picture stays */ }
+  }
+  function versionsHtml(n) {
+    const others = versionsOf(n).filter((v) => v.id !== n.final).reverse();
+    if (!others.length) return '';
+    return `<details class="fold" data-k="versions"><summary>Other versions (${others.length})</summary>
+      <p class="hint">Made earlier and kept. They are not used by the next steps unless you make one the final.</p>
+      <div class="ver-grid">${others.map((v) => `<figure class="ver"><img src="${esc(versionThumb(v))}" alt="" data-ver="${esc(v.id)}">
+        <figcaption>${v.out.product?.unitPrice ? `<b>${esc(money(v.out.product.unitPrice))}</b>` : ''}<span>${esc(v.note || 'No note')}</span></figcaption>
+        <div class="ver-acts"><button class="btn small" data-act="ver-use" data-ver="${esc(v.id)}">Make this the final</button><button class="btn ghost small" data-act="ver-del" data-ver="${esc(v.id)}">Discard</button></div></figure>`).join('')}</div></details>`;
+  }
+
   // Every finished step goes into the run history on the server, worked or not.
   function reportRun(n) {
     const def = NODES[n.type], o = (n.status === 'ok' && n.out) || {};
@@ -234,7 +285,9 @@
     S.busy = true; S.batch = uid('b');
     try {
       for (const n of plan) {
-        if (NODES[n.type].cost === 'checkout' && !(await confirmCheckout(n))) break;
+        // A step that reaches outside the bench asks first: its own question if it has one, the checkout question otherwise.
+        const def = NODES[n.type];
+        if (def.confirm ? !(await def.confirm(n, { ask, source: G.source })) : def.cost === 'checkout' && !(await confirmCheckout(n))) break;
         if (!(await execNode(n))) break;
       }
     } finally { S.busy = false; refreshAll(); }
@@ -242,7 +295,7 @@
   // Run every step that has not worked yet, in order, one at a time. Checkouts are never included.
   async function runFlow() {
     if (S.busy) return toast('A step is already running. Steps run one at a time.');
-    const todo = topo().filter((n) => statusOf(n) !== 'ok' && NODES[n.type].cost !== 'checkout');
+    const todo = topo().filter((n) => statusOf(n) !== 'ok' && NODES[n.type].cost !== 'checkout' && !NODES[n.type].confirm);
     const set = new Set(), plan = [];
     for (const n of todo) {
       if (checks(n).some((i) => i.level === 'block')) continue;
@@ -288,7 +341,11 @@
       const d = $('dlg');
       d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2><div class="dlg-body">${body}</div><menu><button class="btn ghost" value="no">Cancel</button>${alt ? `<button class="btn ghost" value="alt">${esc(alt)}</button>` : ''}<button class="btn wire" value="yes">${esc(ok)}</button></menu></form>`;
       d.returnValue = 'no';
-      d.onclose = () => resolve(d.returnValue === 'yes' ? true : d.returnValue === 'alt' ? 'alt' : false);
+      // The answer is taken from the button press itself. The close event covers Escape, and a hidden tab can hold it back.
+      let answered = false;
+      const finish = (v) => { if (answered) return; answered = true; resolve(v === 'yes' ? true : v === 'alt' ? 'alt' : false); };
+      d.querySelector('form').addEventListener('submit', (e) => finish(e.submitter ? e.submitter.value : 'no'));
+      d.onclose = () => finish(d.returnValue);
       d.showModal();
     });
   }
@@ -311,28 +368,43 @@
     const el = document.createElement('article');
     el.className = 'node';
     el.dataset.id = n.id;
+    el.dataset.group = def.group.toLowerCase(); // the stylesheet gives each group of steps its own hue
     const port = (p, dir) => `<div class="port ${dir}" data-port="${p.key}" data-type="${p.type}"><i class="dot"></i><span>${esc(p.label)}</span>${p.optional ? '<em>optional</em>' : ''}</div>`;
+    // The card shows what the step is set to and what it made. Its settings are edited in the side panel.
     el.innerHTML = `
-      <header class="n-head"><div><span class="n-ep">${esc(def.endpoint)}</span><h3>${esc(def.title)} <span class="n-world"></span></h3></div><span class="stamp"></span></header>
+      <header class="n-head"><div><h3>${svg(iconKey(def))}<span>${esc(def.title)}</span> <span class="n-world"></span></h3></div><span class="stamp"></span></header>
       <div class="n-ports"><div class="n-in">${def.inputs.map((p) => port(p, 'in')).join('')}</div><div class="n-out">${def.outputs.map((p) => port(p, 'out')).join('')}</div></div>
-      <div class="n-fields"></div><div class="n-preview"></div><div class="n-verdict"></div>
+      <div class="n-sum"></div><div class="n-preview"></div><div class="n-verdict"></div>
       <footer class="n-foot"><button class="btn small run">Run</button><button class="btn ghost small fork" title="Copy this step and everything after it">Fork</button><button class="btn ghost small del">Remove</button></footer>`;
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
-    buildFields(n, el.querySelector('.n-fields'));
     return el;
   }
-  function categorySelect(sel) {
+  // One line (or a few) saying what the step is set to.
+  function summaryHtml(n) {
+    const def = NODES[n.type];
+    if (n.type === 'category') {
+      const c = S.cat.categories.find((x) => x.categoryId === n.cfg.categoryId);
+      return c ? `<span class="sum-cat">${c.imageUrl ? `<img src="${esc(c.imageUrl)}" alt="">` : `<i>${svg(glyphKey(c.name))}</i>`}${esc(c.name)}</span>` : '<span class="muted">No category chosen yet</span>';
+    }
+    if (def.summary) return esc(def.summary(n));
+    const parts = def.fields.filter((f) => !['options', 'clusters', 'pick', 'check'].includes(f.kind) && n.cfg[f.key] !== undefined && n.cfg[f.key] !== '')
+      .slice(0, 4).map((f) => (f.kind === 'textarea' ? String(n.cfg[f.key]) : `${f.label} ${n.cfg[f.key]}`));
+    return parts.length ? esc(parts.join(' · ')) : '<span class="muted">Not set up yet</span>';
+  }
+  // Categories as picture tiles, grouped by how they are made.
+  function categoryTiles(sel) {
     const cats = S.cat.categories;
-    const by = (w) => cats.filter((c) => c.world === w).map((c) => `<option value="${esc(c.categoryId)}"${c.categoryId === sel ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
-    return `<option value="">${cats.length ? 'Choose…' : 'No categories loaded'}</option><optgroup label="Jewelry">${by('jewelry')}</optgroup><optgroup label="Print">${by('print')}</optgroup>`;
+    if (!cats.length) return '<p class="hint">No categories loaded. Check the Arcade key under Models and keys.</p>';
+    const group = (w, label) => `<div class="tp-label">${label}</div><div class="tp-grid">${cats.filter((c) => c.world === w).map((c) =>
+      `<button type="button" class="tp" data-id="${esc(c.categoryId)}" data-name="${esc(c.name)}" aria-pressed="${c.categoryId === sel}">${c.imageUrl ? `<img loading="lazy" src="${esc(c.imageUrl)}" alt="">` : `<i>${svg(glyphKey(c.name), 'ic big')}</i>`}<span>${esc(c.name)}</span></button>`).join('')}</div>`;
+    return group('jewelry', 'Jewelry') + group('print', 'Print goods');
   }
   function buildFields(n, box) {
     const def = NODES[n.type];
     box.innerHTML = '';
     let pair = null;
     for (const f of def.fields) {
-      if (n.cfg[f.key] === undefined && f.default !== undefined) n.cfg[f.key] = f.default;
-      const dynamic = f.kind === 'options' || f.kind === 'clusters' || f.kind === 'pick';
+      const dynamic = ['options', 'clusters', 'pick', 'category', 'chips', 'store', 'collections'].includes(f.kind);
       const wrap = document.createElement(dynamic ? 'div' : 'label');
       wrap.dataset.field = f.key;
       if (f.printOnly) wrap.dataset.printOnly = '1';
@@ -342,11 +414,51 @@
       else if (f.kind === 'text') wrap.innerHTML = `${esc(f.label)}<input type="text" value="${esc(val || '')}" placeholder="${esc(f.placeholder || '')}">${note}`;
       else if (f.kind === 'number') wrap.innerHTML = `${esc(f.label)}<input type="number" value="${esc(val ?? '')}"${f.min != null ? ` min="${f.min}"` : ''}${f.max != null ? ` max="${f.max}"` : ''}>`;
       else if (f.kind === 'check') { wrap.className = 'check'; wrap.innerHTML = `<input type="checkbox"${val ? ' checked' : ''}><span>${esc(f.label)}</span>`; }
-      else if (f.kind === 'category') wrap.innerHTML = `${esc(f.label)}<select>${categorySelect(val)}</select>`;
-      else if (f.kind === 'model') wrap.innerHTML = `${esc(f.label)}<select><option value="">Arcade picks</option>${S.cat.models.map((m) => `<option value="${esc(m.modelId)}"${m.modelId === val ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select>${note}`;
-      else if (f.kind === 'pick') {
+      else if (f.kind === 'category') {
+        wrap.className = 'tiles-pick';
+        wrap.innerHTML = categoryTiles(val);
+        wrap.onclick = (e) => {
+          const b = e.target.closest('button[data-id]');
+          if (!b) return;
+          n.cfg.categoryId = b.dataset.id; n.cfg.categoryName = b.dataset.name;
+          wrap.querySelectorAll('button[data-id]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+          changed();
+        };
+      } else if (f.kind === 'model') wrap.innerHTML = `${esc(f.label)}<select><option value="">Arcade picks</option>${S.cat.models.map((m) => `<option value="${esc(m.modelId)}"${m.modelId === val ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select>${note}`;
+      else if (f.kind === 'chips') {
+        // A row of choices, one or many. f.options is a list, or a function of the step, of { id, label, swatch? }.
+        const opts = (typeof f.options === 'function' ? f.options(n, G) : f.options) || [];
+        const on = (id) => (f.multi ? (n.cfg[f.key] || []).includes(id) : n.cfg[f.key] === id);
+        wrap.innerHTML = `<div class="tp-label">${esc(f.label)}</div><div class="chips-pick">${opts.map((o) =>
+          `<button type="button" class="chip" data-chip="${esc(o.id)}" aria-pressed="${on(o.id)}">${o.swatch ? `<i class="sw" style="background:${esc(o.swatch)}"></i>` : ''}${esc(o.label)}</button>`).join('')
+          || '<span class="hint">Still loading the choices. Close this panel and open it again.</span>'}</div>`;
+        wrap.onclick = (e) => {
+          const b = e.target.closest('[data-chip]');
+          if (!b) return;
+          if (f.multi) { const cur = new Set(n.cfg[f.key] || []); if (cur.has(b.dataset.chip)) cur.delete(b.dataset.chip); else cur.add(b.dataset.chip); n.cfg[f.key] = [...cur]; }
+          else n.cfg[f.key] = b.dataset.chip;
+          wrap.querySelectorAll('[data-chip]').forEach((x) => x.setAttribute('aria-pressed', String(on(x.dataset.chip))));
+          changed();
+        };
+      } else if (f.kind === 'store') {
+        // The person's connected stores, with connecting a new one as the last entry.
+        const drawStores = async () => {
+          let list = [];
+          try { list = await App.stores(); } catch (e) { wrap.innerHTML = `<p class="hint">${esc(e.message)}</p>`; return; }
+          wrap.innerHTML = `<label>${esc(f.label)}<select><option value=""${n.cfg[f.key] ? '' : ' selected'} disabled>${list.length ? 'Choose a store' : 'No store connected yet'}</option>${list.map((s) =>
+            `<option value="${esc(s.id)}"${s.id === n.cfg[f.key] ? ' selected' : ''}>${esc(s.name)} \u00b7 ${esc(s.platformName)}</option>`).join('')}<option value="__add">+ Connect a WooCommerce or Shopify store\u2026</option></select></label>`;
+          wrap.querySelector('select').onchange = (ev) => {
+            const v = ev.target.value;
+            if (v === '__add') return App.storeBox({ onDone: (s) => { n.cfg[f.key] = s.id; n.cfg.storeName = s.name; changed(); }, onClose: drawStores });
+            const s = list.find((x) => x.id === v);
+            n.cfg[f.key] = v; n.cfg.storeName = s ? s.name : '';
+            changed();
+          };
+        };
+        drawStores();
+      } else if (f.kind === 'pick') {
         wrap.className = 'picked';
-        wrap.innerHTML = `<span>${val ? esc(n.cfg.pickLabel || val) : 'Nothing chosen'}</span><button class="btn ghost small" type="button">Choose</button>`;
+        wrap.innerHTML = `<span>${val ? esc(n.cfg.pickLabel || val) : 'Nothing chosen'}</span><button class="btn ghost small" type="button">Choose from your account</button>`;
         wrap.querySelector('button').onclick = async () => {
           try {
             const it = await pick(f.list);
@@ -361,30 +473,110 @@
       }
       const input = dynamic ? null : wrap.querySelector('textarea, input, select');
       if (input) {
-        const read = () => {
-          n.cfg[f.key] = input.type === 'checkbox' ? input.checked : input.value;
-          if (f.kind === 'category') n.cfg.categoryName = S.cat.categories.find((c) => c.categoryId === input.value)?.name || '';
-          changed();
-        };
+        const read = () => { n.cfg[f.key] = input.type === 'checkbox' ? input.checked : input.value; changed(); };
         input.addEventListener(input.tagName === 'SELECT' || input.type === 'checkbox' ? 'change' : 'input', read);
       }
       if (f.kind === 'number') {
         if (!pair || pair.children.length >= 2) { pair = document.createElement('div'); pair.className = 'pair'; box.appendChild(pair); }
         pair.appendChild(wrap);
       } else { pair = null; box.appendChild(wrap); }
-      if (f.assist) box.appendChild(assistRow(n, f, wrap));
+      if (f.assist) { box.appendChild(aiRow()); box.appendChild(assistRow(n, f, wrap)); box.appendChild(metalRow(n, f, wrap)); }
     }
   }
+  // Jewelry reads the metal from the prompt. These chips write it in, from the metals the category can be made in.
+  function metalRow(n, f, wrap) {
+    const row = document.createElement('div');
+    row.dataset.metals = '1';
+    row.hidden = true;
+    row.onclick = (e) => {
+      const b = e.target.closest('button');
+      if (!b || b.disabled) return;
+      const ta = wrap.querySelector('textarea');
+      let text = ta.value;
+      const tidy = (t) => t.trim().replace(/[.,\s]+$/, '');
+      if (b.dataset.metal) {
+        const known = [...row.querySelectorAll('[data-metal]')].map((x) => x.dataset.metal).sort((a, c) => c.length - a.length);
+        const found = known.find((m) => text.toLowerCase().includes(m.toLowerCase()));
+        if (found) text = text.replace(new RegExp(found.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), b.dataset.metal);
+        else text = text.trim() ? `${tidy(text)}, in ${b.dataset.metal}` : `A ${b.dataset.metal} `;
+      } else text = /no stones/i.test(text) ? text.replace(/,?\s*no stones/i, '') : `${tidy(text)}, no stones`;
+      ta.value = text; n.cfg[f.key] = text;
+      changed();
+    };
+    return row;
+  }
+  // A colour dot for a metal, worked out from its name. Arcade sends the names; the dots are ours.
+  function metalDot(label) {
+    const l = label.toLowerCase();
+    const c = /black/.test(l) ? '#2b2b2b' : /rose/.test(l) ? '#d9a590' : /white gold/.test(l) ? '#e6e3da' : /platinum/.test(l) ? '#d5d7da' : /silver/.test(l) ? '#c5c9cf' : /vermeil/.test(l) ? '#e3c063' : /gold/.test(l) ? '#d4af37' : '';
+    return c ? `<i class="sw" style="background:${c}"></i>` : '';
+  }
+  function renderMetals(n, row) {
+    const src = G.source(n, 'category'), catId = src?.node.cfg.categoryId;
+    if (G.worldOf(n) !== 'jewelry' || !catId) { row.hidden = true; return; }
+    const opts = src.node.out?.category?.options || S.cat.options[catId];
+    row.hidden = false;
+    if (!opts) {
+      // Read the category's options once, so the metals show without running the Category step.
+      if (!S.cat.pending[catId]) {
+        S.cat.pending[catId] = arcade('categories/get', { categoryId: catId, selections: {} }).then((r) => { S.cat.options[catId] = r.options || []; })
+          .catch(() => { S.cat.options[catId] = []; }).finally(() => renderInspector());
+      }
+      return setHtml(row, '<div class="tp-label">Loading the metals this category can be made in…</div>');
+    }
+    const metal = opts.find((o) => /material|metal/i.test(o.key + o.label)) || opts[0];
+    if (!metal) { row.hidden = true; return; }
+    const prompt = String(n.cfg.prompt || '').toLowerCase();
+    setHtml(row, `<div class="tp-label">Metal. Arcade reads it from the prompt, so pick one to write it in.</div><div class="chips-pick">${metal.values.map((v) =>
+      `<button type="button" class="chip" data-metal="${esc(v.label)}" aria-pressed="${prompt.includes(v.label.toLowerCase())}"${v.available ? '' : ' disabled title="Arcade can’t make this right now"'}>${metalDot(v.label)}${esc(v.label)}</button>`).join('')}<button type="button" class="chip" data-stones="1" aria-pressed="${/no stones/.test(prompt)}">No stones</button></div>`);
+  }
   // Two helpers under a prompt: pick one from the library, or ask a connected model for ideas.
+  // The AI model behind "Suggest", set right here in the panel: pick a maker, add a key, choose a model.
+  // It folds away once a model is connected, and stays open while there is none.
+  function aiRow() {
+    const d = document.createElement('details');
+    d.className = 'fold ai-pick';
+    d.innerHTML = '<summary></summary><div class="ai-body"></div>';
+    // The closed state looks like a drop-down: what is in use, whose key, and an arrow to open it.
+    const label = () => {
+      const m = App.aiInfo();
+      d.querySelector('summary').innerHTML = `<span class="ai-cap">AI model for prompt ideas, and its API key</span><span class="ai-box${m ? '' : ' none'}"${m ? ` data-logo="${esc(m.preset || '')}"` : ''}><b>${m ? `${esc(m.name)} \u00b7 ${esc(m.model)}` : 'Add an API key'}</b>${m ? `<em>${esc(m.whose)}</em>` : '<em>Claude, OpenAI or Gemini</em>'}<i class="ai-chev" aria-hidden="true"></i></span>`;
+    };
+    const build = () => { if (d.dataset.built) return; d.dataset.built = '1'; App.connectInline(d.querySelector('.ai-body')); };
+    label();
+    App.onAiChange = label;
+    d.addEventListener('toggle', () => { if (d.open) build(); });
+    if (!App.hasAi()) { d.open = true; build(); }
+    return d;
+  }
   function assistRow(n, f, wrap) {
     const row = document.createElement('div');
     row.className = 'assist';
-    row.innerHTML = '<button type="button" data-tab="lib">From library</button><button type="button" data-tab="ai">Suggest</button>';
-    row.onclick = (e) => {
+    row.innerHTML = '<button type="button" data-tab="lib">From library</button><button type="button" data-tab="ai">Suggest a prompt</button>';
+    row.onclick = async (e) => {
       const b = e.target.closest('button');
-      if (!b) return;
+      if (!b || b.disabled) return;
       const src = G.source(n, 'category'), cat = src?.node.out?.category, categoryId = src?.node.cfg.categoryId;
       const metals = cat && (cat.options.find((o) => /material|metal/i.test(o.key + o.label)) || cat.options[0]);
+      // Suggest writes straight into the prompt box. Whatever is already there is taken as the idea.
+      if (b.dataset.tab === 'ai') {
+        const ta = wrap.querySelector('textarea');
+        b.disabled = true; b.textContent = 'Writing a prompt…';
+        try {
+          const r = await App.suggestOne({ world: G.worldOf(n), categoryId, categoryName: S.cat.categories.find((c) => c.categoryId === categoryId)?.name,
+            materials: metals ? metals.values.filter((v) => v.available).map((v) => v.label) : undefined, idea: ta.value });
+          ta.value = r.prompt; n.cfg[f.key] = r.prompt;
+          changed();
+          toast(`Written by ${r.model}. Press it again for another, or Undo to get your text back.`);
+        } catch (err) {
+          if (err.code === 'NO_MODEL') {
+            const ai = $('inspector').querySelector('.ai-pick');
+            if (ai) { ai.open = true; ai.scrollIntoView({ block: 'center' }); }
+            toast('Add an API key in the box that just opened, then press Suggest a prompt again.');
+          } else toast(err.message);
+        } finally { b.disabled = false; b.textContent = 'Suggest a prompt'; }
+        return;
+      }
       App.promptDialog({ tab: b.dataset.tab, world: G.worldOf(n), categoryId, categoryName: S.cat.categories.find((c) => c.categoryId === categoryId)?.name,
         materials: metals ? metals.values.filter((v) => v.available).map((v) => v.label) : undefined,
         onUse: (text) => { n.cfg[f.key] = text; wrap.querySelector('textarea').value = text; changed(); } });
@@ -399,17 +591,53 @@
     box.dataset.sig = sig;
     if (!cat) { box.innerHTML = '<p class="hint">Arcade picks the options. Run the Category step to choose them yourself.</p>'; return; }
     const chosen = n.cfg.selections || {};
-    box.innerHTML = cat.options.map((o) => `<label style="margin-bottom:6px">${esc(o.label)}<select data-opt="${esc(o.key)}"><option value="">Arcade picks</option>${o.values.map((v) =>
-      `<option value="${esc(v.value)}"${chosen[o.key] === v.value ? ' selected' : ''}${v.available ? '' : ' disabled'}>${esc(v.label)}${v.available ? '' : ' (can’t be made)'}</option>`).join('')}</select></label>`).join('')
+    box.innerHTML = cat.options.map((o) => `<div class="opt"><div class="tp-label">${esc(o.label)}</div><div class="chips-pick"><button type="button" class="chip" data-opt="${esc(o.key)}" data-val="" aria-pressed="${!chosen[o.key]}">Arcade picks</button>${o.values.map((v) =>
+      `<button type="button" class="chip" data-opt="${esc(o.key)}" data-val="${esc(v.value)}" aria-pressed="${chosen[o.key] === v.value}"${v.available ? '' : ' disabled title="Arcade can’t make this right now"'}>${metalDot(v.label)}${esc(v.label)}</button>`).join('')}</div></div>`).join('')
       || '<p class="hint">This category has no options.</p>';
-    box.querySelectorAll('select').forEach((s) => {
-      s.onchange = () => {
-        const next = { ...(n.cfg.selections || {}) };
-        if (s.value) next[s.dataset.opt] = s.value; else delete next[s.dataset.opt];
-        n.cfg.selections = next;
-        changed();
-      };
-    });
+    box.onclick = (e) => {
+      const b = e.target.closest('button[data-opt]');
+      if (!b || b.disabled) return;
+      const next = { ...(n.cfg.selections || {}) };
+      if (b.dataset.val) next[b.dataset.opt] = b.dataset.val; else delete next[b.dataset.opt];
+      n.cfg.selections = next;
+      changed();
+    };
+  }
+  // The chosen store's collections (Shopify) or categories (WooCommerce), as chips. The one that fits the
+  // product is picked for you, with the reason shown; you can change it, or name a new one to be made.
+  function renderCollections(n, box) {
+    const storeId = n.cfg.storeId;
+    if (!storeId) return setHtml(box, '<p class="hint">Choose a store to see its collections.</p>');
+    const prod = G.source(n, 'product')?.node.out?.product;
+    const cat = prod && S.cat.categories.find((c) => c.categoryId === prod.categoryId);
+    const key = `${storeId}|${cat ? cat.name : ''}`, cache = (S.cat.collections = S.cat.collections || {});
+    if (!cache[key]) {
+      cache[key] = { loading: true };
+      App.api(`stores/${storeId}/collections?category=${encodeURIComponent(cat ? cat.name : '')}&world=${encodeURIComponent(G.worldOf(n) || '')}`)
+        .then((r) => { cache[key] = r; if (!n.cfg.collectionsFor || n.cfg.collectionsFor !== key) { n.cfg.collections = r.suggested; n.cfg.collectionsFor = key; save(); } })
+        .catch((e) => { cache[key] = { error: e.message }; })
+        .finally(() => { refreshAll(); });
+    }
+    const c = cache[key];
+    if (c.loading) return setHtml(box, '<p class="hint">Reading the store’s collections…</p>');
+    if (c.error) return setHtml(box, `<p class="hint">${esc(c.error)}</p>`);
+    const chosen = n.cfg.collections || [], word = c.word || 'collection';
+    const auto = JSON.stringify(chosen) === JSON.stringify(c.suggested);
+    setHtml(box, `<div class="tp-label">Where it goes in the store</div><div class="chips-pick">${c.collections.map((x) =>
+      `<button type="button" class="chip" data-col="${esc(x.id)}" aria-pressed="${chosen.includes(x.id)}"${x.canAdd ? '' : ' disabled title="This one fills itself by rules, so products cannot be added to it by hand"'}>${esc(x.title)}</button>`).join('') || `<span class="hint">The store has no ${word} yet.</span>`}</div>
+      <p class="hint">${esc(auto ? c.why : `${chosen.length} chosen by you.`)}</p>
+      <label>Or make a new ${word} named<input type="text" data-newcol placeholder="Leave empty for none"></label>`);
+    const input = box.querySelector('[data-newcol]');
+    if (input && document.activeElement !== input) input.value = n.cfg.newCollection || '';
+    box.onclick = (e) => {
+      const b = e.target.closest('button[data-col]');
+      if (!b || b.disabled) return;
+      const now = new Set(n.cfg.collections || []);
+      if (now.has(b.dataset.col)) now.delete(b.dataset.col); else now.add(b.dataset.col);
+      n.cfg.collections = [...now];
+      changed();
+    };
+    box.oninput = (e) => { if (e.target.matches('[data-newcol]')) { n.cfg.newCollection = e.target.value; save(); } };
   }
   // Recolor needs the design's main colors, which only exist once the step before it has run.
   function renderClusters(n, box) {
@@ -437,6 +665,7 @@
   function previewHtml(n) {
     const o = n.out;
     if (!o) return '';
+    if (NODES[n.type].preview) return NODES[n.type].preview(n); // a step may draw its own result
     if (o.product) {
       const p = o.product;
       return `<div class="pv"><img src="${esc(p.imageUrl)}" alt=""><div><span class="price">${esc(money(p.unitPrice) || 'Price pending')}</span><span class="title">${esc(p.title)}</span><span class="muted">${esc(p.maker)}${p.quantity > 1 ? ' · each at qty ' + p.quantity : ''}</span></div></div>`;
@@ -454,7 +683,7 @@
     if (o.order) return `<div class="pv-text"><span>${o.order.paid ? `Order ${esc(o.order.orderNumber)}: <b>${esc(o.order.status)}</b>, ${esc(money(o.order.total))}` : 'No order yet. The checkout has not been paid.'}</span></div>`;
     return '';
   }
-  function verdictHtml(n, st) {
+  function verdictHtml(n, st, onCard = false) {
     const out = [];
     if (st === 'running') out.push(`<p>${esc(n.progress || 'Working')}…</p>`);
     else if (st === 'error') out.push(`<p class="v-bad">${esc(n.error.message)}</p>`);
@@ -463,7 +692,7 @@
       out.push(`<p class="v-block">${esc(w.text)}</p>`);
       if (w.more) out.push(`<p class="muted">${w.more} more in the details.</p>`);
     } else if (st === 'stale') out.push('<p>Changed since the last run. The result shown is the old one.</p>');
-    else if (st === 'ready') out.push(`<p>${COST[NODES[n.type].cost]}</p>`);
+    else if (st === 'ready' && !onCard) out.push(`<p>${COST[NODES[n.type].cost]}</p>`);
     if (st !== 'running') for (const i of checks(n).filter((x) => x.level === 'warn')) out.push(`<p class="v-warn">${esc(i.text)}</p>`);
     return out.join('');
   }
@@ -476,28 +705,24 @@
     el.classList.toggle('sel', S.sel === n.id);
     setHtml(el.querySelector('.stamp'), esc(stampText(n, st)));
     setHtml(el.querySelector('.n-world'), world ? `<span class="tag ${world}">${world}</span>` : '');
-    el.querySelectorAll('[data-print-only]').forEach((w) => {
-      const off = world === 'jewelry';
-      w.querySelectorAll('input, select').forEach((i) => { i.disabled = off; });
-      w.querySelector('.off-note').hidden = !off;
-    });
-    for (const f of def.fields) {
-      const box = el.querySelector(`[data-field="${f.key}"]`);
-      if (f.kind === 'options') renderOptions(n, box);
-      if (f.kind === 'clusters') renderClusters(n, box);
-    }
+    setHtml(el.querySelector('.n-sum'), summaryHtml(n));
     for (const o of def.outputs) el.querySelector(`.port.out[data-port="${o.key}"]`).classList.toggle('off', Boolean(o.when) && !o.when(n, G));
     el.querySelectorAll('.port').forEach((p) => {
       const dir = p.classList.contains('in') ? 'to' : 'from';
       p.classList.toggle('linked', S.flow.edges.some((e) => e[dir].node === n.id && e[dir].port === p.dataset.port));
     });
     setHtml(el.querySelector('.n-preview'), previewHtml(n));
-    setHtml(el.querySelector('.n-verdict'), verdictHtml(n, st));
+    setHtml(el.querySelector('.n-verdict'), verdictHtml(n, st, true));
     const run = el.querySelector('.run');
     run.disabled = S.busy;
     run.textContent = st === 'running' ? 'Running' : n.out ? 'Run again' : 'Run';
   }
-  function mount(n) { const el = buildNode(n); $('world').appendChild(el); els.set(n.id, el); }
+  function mount(n) {
+    for (const f of NODES[n.type].fields) if (n.cfg[f.key] === undefined && f.default !== undefined) n.cfg[f.key] = f.default;
+    const el = buildNode(n);
+    $('world').appendChild(el);
+    els.set(n.id, el);
+  }
   function mountAll() { for (const el of els.values()) el.remove(); els.clear(); S.flow.nodes.forEach(mount); }
 
   // ---------- wires ----------
@@ -564,7 +789,7 @@
     S.flow.nodes = S.flow.nodes.filter((x) => x.id !== id);
     S.flow.edges = S.flow.edges.filter((e) => e.from.node !== id && e.to.node !== id);
     els.get(id)?.remove(); els.delete(id);
-    if (S.sel === id) S.sel = null;
+    if (S.sel === id) { S.sel = null; S.panel = 'none'; }
     changed();
   }
   // Fork: copy this step and everything after it, fed by the same steps as the original.
@@ -592,9 +817,10 @@
     els.get(map.get(id))?.scrollIntoView?.({ block: 'nearest' });
     toast(`Forked ${set.length} step${set.length === 1 ? '' : 's'}. Change the copy and run it to compare.`);
   }
-  function select(id) {
-    if (S.sel === id && !S.selEdge) return;
+  // Selecting a step opens its panel. Selecting nothing closes the panel, unless another one is asked for.
+  function select(id, panel) {
     S.sel = id; S.selEdge = null;
+    S.panel = panel || (id ? 'step' : 'none');
     for (const [nid, el] of els) el.classList.toggle('sel', nid === id);
     drawEdges();
     renderInspector();
@@ -604,6 +830,7 @@
   function resultHtml(n) {
     const o = n.out;
     if (!o) return '<p class="muted">Nothing yet. Run this step to see what Arcade returns.</p>';
+    if (NODES[n.type].result) return NODES[n.type].result(n);
     let h = '';
     if (o.product) {
       const p = o.product;
@@ -632,41 +859,120 @@
     return h;
   }
   const callsHtml = (calls) => calls.slice().reverse().map((c) =>
-    `<details class="call"><summary><b class="${c.status >= 200 && c.status < 300 ? 's-ok' : 's-bad'}">${c.status}</b><span class="mono">${esc(c.endpoint)}</span><span class="muted">${c.ms}ms${c.body && typeof c.body.status === 'string' ? ' · ' + esc(c.body.status) : ''}</span></summary><pre>${esc('REQUEST\n' + JSON.stringify(c.req, null, 2) + '\n\nRESPONSE\n' + JSON.stringify(c.body, null, 2))}</pre></details>`).join('');
-  function renderInspector() {
-    const n = S.sel && G.node(S.sel);
-    let h;
-    if (n) {
-      const def = NODES[n.type], st = statusOf(n), items = checks(n), w = whyNot(n);
-      const checkList = [
-        ...items.map((i) => `<li class="${i.level}">${esc(i.text)}</li>`),
-        ...(w && !w.self ? [`<li class="block">${esc(w.text)}</li>`] : []),
-        ...(n.status === 'error' ? [`<li class="block">Arcade said: ${esc(n.error.message)}</li>`] : []),
-      ];
-      h = `<div class="i-top"><div><span class="mono muted">${esc(def.endpoint)}</span><h2>${esc(def.title)}</h2></div><span class="stamp" data-status="${st}">${esc(stampText(n, st, false))}</span></div>
-        <p class="lede">${esc(def.blurb)}</p>
-        <p>${def.worlds.map((x) => `<span class="tag ${x}">${x}</span>`).join(' ')} ${def.cost === 'read' ? '<span class="tag read">read only</span>' : ''}</p>
-        <h3>Can it run?</h3><ul class="rules">${checkList.join('') || '<li class="fine">Yes. Nothing stops this step.</li>'}</ul>
-        <h3>Result</h3>${resultHtml(n)}
-        ${def.rules.length ? `<h3>How Arcade treats this step</h3><ul class="rules">${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
-        <h3>API calls</h3>${n.calls?.length ? callsHtml(n.calls) : '<p class="muted">None this session.</p>'}`;
-    } else {
-      const order = topo();
-      h = `<h2>Flow check</h2><p class="lede">Every step is checked against Arcade’s rules before anything runs.</p>
-        <div class="checklist">${order.map((x) => { const st = statusOf(x), w = whyNot(x); return `<button data-go="${x.id}"><b>${esc(NODES[x.type].title)}</b><span class="stamp" data-status="${st}">${esc(stampText(x, st, false))}</span>${w ? `<span class="why">${esc(w.text)}</span>` : x.status === 'error' ? `<span class="why">${esc(x.error.message)}</span>` : ''}</button>`; }).join('') || '<p class="muted">No steps yet.</p>'}</div>
-        <h3>Recent API calls</h3>${S.log.length ? callsHtml(S.log.slice(-14)) : '<p class="muted">None yet.</p>'}`;
+    `<details class="call" data-k="${c.at}-${esc(c.endpoint)}"><summary><b class="${c.status >= 200 && c.status < 300 ? 's-ok' : 's-bad'}">${c.status}</b><span class="mono">${esc(c.endpoint)}</span><span class="muted">${c.ms}ms${c.body && typeof c.body.status === 'string' ? ' · ' + esc(c.body.status) : ''}</span></summary><pre>${esc('REQUEST\n' + JSON.stringify(c.req, null, 2) + '\n\nRESPONSE\n' + JSON.stringify(c.body, null, 2))}</pre></details>`).join('');
+  // Like setHtml, but anything the reader had folded open stays open.
+  function keepOpen(box, html) {
+    if (!box || box._html === html) return;
+    const open = new Set([...box.querySelectorAll('details[data-k]')].filter((d) => d.open).map((d) => d.dataset.k));
+    box.innerHTML = html; box._html = html;
+    box.querySelectorAll('details[data-k]').forEach((d) => { if (open.has(d.dataset.k)) d.open = true; });
+  }
+  const closeBtn = '<button class="p-close" data-act="close" aria-label="Close this panel">×</button>';
+  function overviewHtml() {
+    return `<div class="p-head"><div><h2>Flow check</h2></div><div class="p-head-r">${closeBtn}</div></div>
+      <p class="lede">Every step is checked against Arcade’s rules before anything runs.</p>
+      <div class="checklist">${topo().map((x) => { const st = statusOf(x), w = whyNot(x); return `<button data-go="${x.id}"><b>${esc(NODES[x.type].title)}</b><span class="stamp" data-status="${st}">${esc(stampText(x, st, false))}</span>${w ? `<span class="why">${esc(w.text)}</span>` : x.status === 'error' ? `<span class="why">${esc(x.error.message)}</span>` : ''}</button>`; }).join('') || '<p class="muted">No steps yet.</p>'}</div>
+      <details class="fold" data-k="log"><summary>Recent API calls${S.log.length ? ` (${Math.min(14, S.log.length)})` : ''}</summary>${S.log.length ? callsHtml(S.log.slice(-14)) : '<p class="muted">None yet.</p>'}</details>`;
+  }
+  // Everything the flow has produced so far, in one place: products with their prices, checkout links, loose designs.
+  function resultsHtml() {
+    const products = new Map(), designs = new Map(), links = [];
+    for (const n of topo()) {
+      const o = n.out;
+      if (!o) continue;
+      if (o.product) products.set(o.product.productId, o.product);
+      if (o.pattern) designs.set(o.pattern.patternId, o.pattern);
+      if (o.checkout) links.push(o.checkout);
     }
+    for (const p of products.values()) designs.delete(p.patternId);
+    const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+    return `<div class="p-head"><div><h2>What this flow made</h2></div><div class="p-head-r">${closeBtn}</div></div>
+      <p class="lede">${products.size || designs.size ? `${count(products.size, 'product')}${designs.size ? `, ${count(designs.size, 'design')} without a product` : ''}${links.length ? `, ${count(links.length, 'checkout link')}` : ''}.` : 'Nothing yet. Run the flow, and what it makes shows up here.'}</p>
+      <div class="made">${[...products.values()].map((p) => `<article class="made-card"><img src="${esc(p.imageUrl)}" alt="${esc(p.title)}"><div><span class="price">${esc(money(p.unitPrice) || 'Price pending')}</span><b>${esc(p.title)}</b><span class="muted">${esc([p.selectionLabel, p.maker].filter(Boolean).join(' · '))}</span>${p.quantity > 1 ? `<span class="muted">Price each at quantity ${p.quantity}</span>` : ''}</div></article>`).join('')}</div>
+      ${links.length ? `<h3>Checkout links</h3>${links.map((c) => `<p><a href="${esc(c.checkoutUrl)}" target="_blank" rel="noopener">Open Arcade’s checkout page</a> <span class="muted">${esc((c.titles || []).join(', '))}</span></p>`).join('')}` : ''}
+      ${designs.size ? `<h3>Designs without a product</h3><div class="i-imgs">${[...designs.values()].map((d) => `<img class="i-img" src="${esc(d.thumbnailUrl || d.imageUrl)}" alt="Design">`).join('')}</div>` : ''}`;
+  }
+  // The side panel. For a step it holds everything you set and everything it returned.
+  // Its form is built once per step, so typing in it is never interrupted; the rest updates in place.
+  function renderInspector() {
     const box = $('inspector');
-    if (box._html === h) return;
-    const open = [...box.querySelectorAll('details')].map((d) => d.open);
-    box.innerHTML = h; box._html = h;
-    if (open.some(Boolean)) { const ds = [...box.querySelectorAll('details')]; const shift = ds.length - open.length; open.forEach((o, i) => { if (o && ds[i + shift]) ds[i + shift].open = true; }); }
+    const n = S.panel === 'step' ? G.node(S.sel) : null;
+    if (S.panel === 'step' && !n) S.panel = 'none';
+    document.querySelector('.shell').dataset.panel = S.panel;
+    if (S.panel === 'none') { if (box._for) { box._for = null; box.innerHTML = ''; } return; }
+    if (S.panel === 'check') {
+      if (box._for !== 'check') { box._for = 'check'; box.innerHTML = '<div id="pCheck"></div>'; box.scrollTop = 0; }
+      return keepOpen($('pCheck'), overviewHtml());
+    }
+    if (S.panel === 'results') {
+      if (box._for !== 'results') { box._for = 'results'; box.innerHTML = '<div id="pMade"></div>'; box.scrollTop = 0; }
+      return setHtml($('pMade'), resultsHtml());
+    }
+    const def = NODES[n.type];
+    if (box._for !== n.id) {
+      box._for = n.id;
+      box.innerHTML = `<div class="p-head"><div><span class="mono muted">${esc(def.endpoint)}</span><h2>${esc(def.title)}</h2></div><div class="p-head-r"><span class="stamp" id="pStamp"></span>${closeBtn}</div></div>
+        <p class="lede">${esc(def.blurb)}</p>
+        <div id="pResult"></div><div id="pActs"></div>
+        ${def.fields.length ? `<details class="fold" data-k="setup"${n.out ? '' : ' open'}><summary>Set it up<span class="fold-sum" id="pSetupSum"></span></summary><div class="n-fields setup" id="pFields"></div></details>` : ''}
+        <div id="pStatus"></div><div id="pMore"></div>`;
+      if (def.fields.length) buildFields(n, $('pFields'));
+      // The AI model and key box stays in view, above the folded setup, so it is never hidden once a step has a result.
+      const aiBox = $('pFields')?.querySelector('.ai-pick');
+      if (aiBox) $('pFields').closest('details').before(aiBox);
+      box.scrollTop = 0;
+    }
+    const st = statusOf(n), world = G.worldOf(n), w = whyNot(n);
+    $('pStamp').dataset.status = st;
+    setHtml($('pStamp'), esc(stampText(n, st, false)));
+    const fields = $('pFields');
+    if (fields) {
+      fields.querySelectorAll('[data-print-only]').forEach((x) => {
+        x.hidden = world === 'jewelry';
+      });
+      for (const f of def.fields) {
+        const fb = fields.querySelector(`[data-field="${f.key}"]`);
+        if (f.kind === 'options') renderOptions(n, fb);
+        if (f.kind === 'clusters') renderClusters(n, fb);
+        if (f.kind === 'collections') renderCollections(n, fb);
+      }
+      const metals = fields.querySelector('[data-metals]');
+      if (metals) renderMetals(n, metals);
+    }
+    const checkList = [
+      ...checks(n).map((i) => `<li class="${i.level}">${esc(i.text)}</li>`),
+      ...(w && !w.self ? [`<li class="block">${esc(w.text)}</li>`] : []),
+      ...(n.status === 'error' ? [`<li class="block">Arcade said: ${esc(n.error.message)}</li>`] : []),
+    ];
+    const made = versionsOf(n).length, making = NODES[n.type].cost === 'create';
+    keepOpen($('pResult'), `<h3>${made > 1 ? `The final, of ${made} versions` : n.out ? 'Result' : 'Nothing made yet'}</h3>${resultHtml(n)}${versionsHtml(n)}`);
+    setHtml($('pActs'), `<div class="p-actions"><button class="btn wire" data-act="run"${S.busy ? ' disabled' : ''}>${st === 'running' ? 'Running' : !n.out ? 'Run this step' : making ? 'Make another version' : 'Run again'}</button><button class="btn ghost" data-act="fork">Fork</button><button class="btn ghost" data-act="del">Remove</button></div>`);
+    // Folded away, the setup still says what it is set to.
+    if ($('pSetupSum')) setHtml($('pSetupSum'), esc(new DOMParser().parseFromString(summaryHtml(n), 'text/html').body.textContent));
+    keepOpen($('pStatus'), `<details class="fold" data-k="can"${checkList.length ? ' open' : ''}><summary>Can it run?<span class="fold-sum">${checkList.length ? 'Not yet' : 'Yes'}</span></summary><ul class="rules">${checkList.join('') || `<li class="fine">Yes. ${esc(COST[def.cost].replace(/^Ready\. /, ''))}</li>`}</ul></details>`);
+
+
+    keepOpen($('pMore'), `${def.rules.length ? `<details class="fold" data-k="rules"><summary>How Arcade treats this step</summary><p>${def.worlds.map((x) => `<span class="tag ${x}">${x}</span>`).join(' ')} ${def.cost === 'read' ? '<span class="tag read">read only</span>' : ''}</p><ul class="rules">${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>` : ''}
+      <details class="fold" data-k="calls"><summary>API calls${n.calls?.length ? ` (${n.calls.length})` : ''}</summary>${n.calls?.length ? callsHtml(n.calls) : '<p class="muted">None this session.</p>'}</details>`);
+  }
+  // The blank bench: one click lays out a whole workflow.
+  function renderStart() {
+    const thumb = (name) => S.cat.categories.find((c) => c.name === name)?.imageUrl;
+    $('start').innerHTML = `<div class="start-card"><h2>What do you want to make?</h2>
+      <p>Pick a workflow and its steps are laid out for you. Then choose your options in the panel on the right.</p>
+      <div class="start-grid">${TEMPLATES.map((t) => `<button type="button" data-tpl="${t.id}">${thumb(t.thumb) ? `<img src="${esc(thumb(t.thumb))}" alt="">` : `<i>${svg(glyphKey(t.thumb), 'ic big')}</i>`}<span><b>${esc(t.title)}</b><small>${esc(t.blurb)}</small></span></button>`).join('')}</div>
+      <button type="button" class="start-alt" data-act="steps">Or add steps one at a time</button></div>`;
+  }
+  function setPalette(state) {
+    S.palette = state;
+    document.querySelector('.shell').dataset.palette = state;
+    try { localStorage.setItem('arcade-workbench.palette', state); } catch { /* fine without it */ }
   }
   function renderTally() {
     const c = { ready: 0, blocked: 0, ok: 0, error: 0, running: 0 };
     for (const n of S.flow.nodes) { const st = statusOf(n); c[st === 'waiting' ? 'blocked' : st === 'stale' ? 'ok' : st]++; }
-    $('tally').innerHTML = `<i>${S.flow.nodes.length} steps</i>${c.ready ? `<i>${c.ready} ready</i>` : ''}${c.blocked ? `<i class="t-hold">${c.blocked} can’t run</i>` : ''}${c.ok ? `<i class="t-ok">${c.ok} worked</i>` : ''}${c.error ? `<i class="t-bad">${c.error} failed</i>` : ''}`;
-    $('empty').hidden = S.flow.nodes.length > 0;
+    $('tally').innerHTML = !S.flow.nodes.length ? '' : `<i>${S.flow.nodes.length} steps</i>${c.ready ? `<i>${c.ready} ready</i>` : ''}${c.blocked ? `<i class="t-hold">${c.blocked} can’t run</i>` : ''}${c.ok ? `<i class="t-ok">${c.ok} worked</i>` : ''}${c.error ? `<i class="t-bad">${c.error} failed</i>` : ''}`;
+    $('start').hidden = S.flow.nodes.length > 0;
     $('btnRunFlow').disabled = S.busy;
   }
   function refreshAll() { S.flow.nodes.forEach(updateNode); drawEdges(); renderInspector(); renderTally(); }
@@ -674,7 +980,7 @@
   // ---------- saving ----------
   let saveTimer, saveWarned = false;
   const snapshot = () => ({ nodes: S.flow.nodes.map((n) => ({ id: n.id, type: n.type, x: n.x, y: n.y, cfg: n.cfg, status: n.status === 'running' ? 'idle' : n.status, out: n.out || null,
-    error: n.error || null, ms: n.ms ?? null, runId: n.runId || null, sig: n.sig || null })), edges: S.flow.edges, view: S.view });
+    error: n.error || null, ms: n.ms ?? null, runId: n.runId || null, sig: n.sig || null, versions: n.versions || undefined, final: n.final || undefined })), edges: S.flow.edges, view: S.view });
   // Flows are saved to the signed-in person's account on the server.
   async function saveNow() {
     clearTimeout(saveTimer);
@@ -700,11 +1006,74 @@
   async function openFlow(id) {
     const f = await App.api('flows/' + id);
     if (f.data.view) S.view = f.data.view;
+    applyView(); // before setFlow, which measures port positions on the page
     setFlow({ id: f.id, name: f.name, nodes: f.data.nodes, edges: f.data.edges }, { keepView: Boolean(f.data.view) });
     applyView();
     renewed.clear(); // an image link that has expired is renewed when it fails to load, one step at a time
   }
-  function changed() { save(); refreshAll(); }
+  function changed() { save(); refreshAll(); recordHistory(); }
+
+  // ---------- undo and redo ----------
+  // Every change to the flow's shape (steps, wires, positions, settings) is remembered, up to 60 back.
+  // Results are not part of it: undoing an edit never throws away something a step has made.
+  const H = { undo: [], redo: [], present: null, key: '', last: 0, busy: false };
+  const shapeKey = () => JSON.stringify([S.flow.nodes.map((n) => [n.id, n.type, n.x, n.y, n.cfg]), S.flow.edges.map((e) => [e.from, e.to])]);
+  const fullCopy = () => JSON.stringify({ nodes: snapshot().nodes, edges: S.flow.edges });
+  function resetHistory() { Object.assign(H, { undo: [], redo: [], present: fullCopy(), key: shapeKey(), last: 0 }); }
+  function recordHistory() {
+    if (H.busy) return;
+    const key = shapeKey();
+    if (H.present === null || key === H.key) { H.present = fullCopy(); H.key = key; return; }
+    // Changes that land within a moment of each other (typing, or adding a step and its wire) undo as one.
+    const now = Date.now();
+    if (now - H.last > 700) { H.undo.push(H.present); if (H.undo.length > 60) H.undo.shift(); }
+    Object.assign(H, { last: now, present: fullCopy(), key, redo: [] });
+  }
+  function restore(copy) {
+    H.busy = true;
+    const snap = JSON.parse(copy), live = new Map(S.flow.nodes.map((n) => [n.id, n]));
+    // A step that still exists keeps whatever it has made since; a step coming back gets what it had then.
+    S.flow.nodes = snap.nodes.map((n) => { const cur = live.get(n.id); return cur ? { ...cur, x: n.x, y: n.y, cfg: n.cfg } : { ...n, status: n.status === 'running' ? 'idle' : n.status }; });
+    S.flow.edges = snap.edges;
+    if (S.sel && !G.node(S.sel)) { S.sel = null; S.panel = 'none'; }
+    S.selEdge = null;
+    mountAll();
+    $('inspector')._for = null;
+    refreshAll();
+    save();
+    Object.assign(H, { busy: false, present: fullCopy(), key: shapeKey() });
+  }
+  function undo() {
+    if (S.busy) return toast('Wait for the running step to finish, then undo.');
+    if (!H.undo.length) return toast('Nothing to undo.');
+    H.redo.push(H.present);
+    restore(H.undo.pop());
+    toast('Undone. Ctrl+Shift+Z brings it back.');
+  }
+  function redo() {
+    if (S.busy) return toast('Wait for the running step to finish, then redo.');
+    if (!H.redo.length) return toast('Nothing to redo.');
+    H.undo.push(H.present);
+    restore(H.redo.pop());
+    toast('Redone.');
+  }
+  // Adding from the list asks first, so a stray click does not drop a step on the bench. It can be told to stop asking.
+  async function askToAdd(type) {
+    let off = false;
+    try { off = localStorage.getItem('arcade-workbench.add-ask') === 'off'; } catch { /* ask */ }
+    if (off) return addNode(type);
+    const def = NODES[type];
+    const yes = await ask({ title: `Add “${def.title}” to this flow?`, ok: 'Add step',
+      body: `<p>${esc(def.blurb)}</p><p>It lands on the bench and its options open on the right. Ctrl+Z takes it back.</p><label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="skipAddAsk"> Don’t ask again, add on one click</label>` });
+    if (!yes) return;
+    if ($('skipAddAsk')?.checked) { try { localStorage.setItem('arcade-workbench.add-ask', 'off'); } catch { /* keep asking */ } }
+    addNode(type);
+  }
+  const SHORTCUTS = [['Ctrl or Cmd + Z', 'Undo'], ['Ctrl or Cmd + Shift + Z, or Ctrl + Y', 'Redo'], ['Ctrl or Cmd + Enter', 'Run the selected step'], ['Ctrl or Cmd + D', 'Fork the selected step'],
+    ['Delete or Backspace', 'Remove the selected step or wire'], ['Escape', 'Close the side panel'], ['Ctrl or Cmd + 0', 'Fit every step on screen'], ['Ctrl or Cmd + scroll', 'Zoom']];
+  function showShortcuts() {
+    ask({ title: 'Keyboard shortcuts', ok: 'Got it', body: `<dl class="facts">${SHORTCUTS.map(([k, v]) => `<dt class="mono">${k}</dt><dd>${v}</dd>`).join('')}</dl><p style="margin-top:12px">Inside a text box, Ctrl+Z undoes your typing as usual.</p>` });
+  }
   function resolveNames() {
     for (const n of S.flow.nodes) {
       if (n.type !== 'category' || !S.cat.categories.length) continue;
@@ -725,6 +1094,7 @@
     if (!keepView) { if (App.view === 'bench') fit(); else S.needFit = true; }
     renderFlowMenu();
     save();
+    resetHistory(); // undo does not reach back into another flow
   }
   // Put another flow under what is already on the bench, so flows can be compared side by side.
   function appendFlow(flow) {
@@ -784,7 +1154,7 @@
     const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
     const k = clamp(Math.min((c.width - 60) / w, (c.height - 60) / h), 0.5, 1);
     S.view = { k, x: Math.max(24, (c.width - w * k) / 2) - Math.min(...xs) * k, y: Math.max(24, (c.height - h * k) / 2) - Math.min(...ys) * k };
-    applyView(); save();
+    applyView(); drawEdges(); save();
   }
 
   // ---------- pointer: pan, drag a step, pull a wire ----------
@@ -799,7 +1169,7 @@
       const nodeEl = e.target.closest('.node'), port = e.target.closest('.port.out');
       if (nodeEl && port) return pullWire(e, nodeEl.dataset.id, port);
       if (nodeEl) { select(nodeEl.dataset.id); if (e.target.closest('.n-head')) dragNode(e, nodeEl); return; }
-      if (e.target.closest('.zoom, .banner, .edge')) return;
+      if (e.target.closest('.zoom, .banner, .edge, .start, .add-step')) return;
       if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
       S.selEdge = null; select(null);
       pan(e);
@@ -820,7 +1190,7 @@
         n.x = Math.round(ox + (ev.clientX - sx) / S.view.k); n.y = Math.round(oy + (ev.clientY - sy) / S.view.k);
         el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
         redraw();
-      }, save);
+      }, () => { save(); recordHistory(); }); // not track(): inside wire() that name is the pointer helper
     }
     function pullWire(e, nodeId, port) {
       const key = port.dataset.port, type = port.dataset.type, a = portPos(nodeId, key, 'out'), temp = $('wire-temp');
@@ -854,7 +1224,7 @@
       const cut = e.target.closest('[data-cut]');
       if (cut) { S.flow.edges = S.flow.edges.filter((x) => x.id !== cut.dataset.cut); S.selEdge = null; return changed(); }
       const edge = e.target.closest('.edge');
-      if (edge) { S.sel = null; S.selEdge = edge.dataset.id; for (const el of els.values()) el.classList.remove('sel'); drawEdges(); return renderInspector(); }
+      if (edge) { S.sel = null; S.panel = 'none'; S.selEdge = edge.dataset.id; for (const el of els.values()) el.classList.remove('sel'); drawEdges(); return renderInspector(); }
       const btn = e.target.closest('.n-foot button'), nodeEl = e.target.closest('.node');
       if (!btn || !nodeEl) return;
       if (btn.classList.contains('run')) runTo(nodeEl.dataset.id);
@@ -885,18 +1255,65 @@
         else if (S.sel) removeNode(S.sel);
       }
       if (e.key === 'Escape') { S.selEdge = null; select(null); drawEdges(); }
+      const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+      if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+      else if (mod && k === 'y') { e.preventDefault(); redo(); }
+      else if (mod && k === 'enter' && S.sel) { e.preventDefault(); runTo(S.sel); }
+      else if (mod && k === 'd' && S.sel) { e.preventDefault(); fork(S.sel); }
+      else if (mod && k === '0') { e.preventDefault(); fit(); }
     });
     window.addEventListener('resize', redraw);
 
     $('zoomIn').onclick = () => { const c = canvas.getBoundingClientRect(); zoomAt(c.left + c.width / 2, c.top + c.height / 2, 1.2); };
     $('zoomOut').onclick = () => { const c = canvas.getBoundingClientRect(); zoomAt(c.left + c.width / 2, c.top + c.height / 2, 1 / 1.2); };
     $('zoomFit').onclick = fit;
+    $('btnUndo').onclick = undo;
+    $('btnRedo').onclick = redo;
+    $('btnKeys').onclick = showShortcuts;
     $('btnRunFlow').onclick = runFlow;
     $('btnExport').onclick = exportFlow;
     $('btnImport').onclick = () => $('importFile').click();
     $('importFile').onchange = (e) => { const f = e.target.files[0]; if (f) importFlow(f); e.target.value = ''; };
     $('flowName').oninput = (e) => { S.flow.name = e.target.value; save(); };
-    $('inspector').addEventListener('click', (e) => { const go = e.target.closest('[data-go]'); if (go) select(go.dataset.go); });
+    $('inspector').addEventListener('click', (e) => {
+      const go = e.target.closest('[data-go]');
+      if (go) return select(go.dataset.go);
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'close') return select(null);
+      if (!act || !S.sel) return;
+      if (act === 'run') runTo(S.sel); else if (act === 'fork') fork(S.sel); else if (act === 'del') removeNode(S.sel);
+      else if (act === 'ver-use') useVersion(G.node(S.sel), e.target.closest('[data-ver]').dataset.ver);
+      else if (act === 'ver-del') dropVersion(G.node(S.sel), e.target.closest('[data-ver]').dataset.ver);
+      else {
+        // Any other button belongs to the step itself, if the step says it handles buttons.
+        const node = G.node(S.sel), def = node && NODES[node.type];
+        if (def && def.onAct) def.onAct(node, act, e.target.closest('[data-act]').dataset, { ask, toast, changed });
+      }
+    });
+    // A category picture that fails to load gives way to a plain tile.
+    $('inspector').addEventListener('error', (e) => { if (e.target.tagName === 'IMG' && e.target.closest('.tp')) e.target.replaceWith(document.createElement('i')); }, true);
+    $('inspector').addEventListener('error', (e) => {
+      const id = e.target.tagName === 'IMG' && e.target.dataset.ver, n = id && S.sel && G.node(S.sel);
+      const v = n && (n.versions || []).find((x) => x.id === id);
+      if (!v || renewed.has('v:' + id) || !S.cat.hasKey) return;
+      renewed.add('v:' + id);
+      renewVersion(n, v);
+    }, true);
+    $('tally').onclick = () => select(null, 'check');
+    $('btnResults').onclick = () => select(null, 'results');
+    $('btnAdd').onclick = () => setPalette('open');
+    $('start').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.act === 'steps') return setPalette('open');
+      const t = TEMPLATES.find((x) => x.id === b.dataset.tpl);
+      if (!t) return;
+      setFlow({ ...fromTemplate(t), id: S.flow.id });
+      const first = topo()[0];
+      if (first) select(first.id);
+      requestAnimationFrame(fit); // the panel has just opened, so fit the steps into what is left
+    });
+    document.addEventListener('click', (e) => { const m = $('more'); if (m.open && (!e.target.closest('#more') || e.target.closest('.more-menu button, .more-menu a'))) m.open = false; });
     $('templates').onchange = async (e) => {
       const v = e.target.value;
       e.target.value = '';
@@ -925,7 +1342,7 @@
           S.flow.id = '';
           await App.api('flows/' + gone, { method: 'DELETE' });
           S.flows = S.flows.filter((f) => f.id !== gone);
-          if (S.flows.length) await openFlow(S.flows[0].id); else setFlow(fromTemplate(TEMPLATES[0]));
+          if (S.flows.length) await openFlow(S.flows[0].id); else setFlow({ name: 'Untitled flow', nodes: [], edges: [] });
         }
       } catch (err) { toast(err.message); }
     };
@@ -936,13 +1353,13 @@
     for (const g of GROUPS) {
       h += `<h2>${g}</h2>`;
       for (const def of Object.values(NODES).filter((d) => d.group === g)) {
-        h += `<button class="cap" draggable="true" data-type="${def.type}" title="${esc(def.endpoint)}"><b>${esc(def.title)} ${def.worlds.length === 1 ? `<span class="tag ${def.worlds[0]}">${def.worlds[0]} only</span>` : ''}</b><small>${esc(def.blurb)}</small></button>`;
+        h += `<button class="cap" draggable="true" data-type="${def.type}" title="${esc(def.endpoint)}"><b>${svg(iconKey(def))}${esc(def.title)} ${def.worlds.length === 1 ? `<span class="tag ${def.worlds[0]}">${def.worlds[0]} only</span>` : ''}</b><small>${esc(def.blurb)}</small></button>`;
       }
     }
     h += '<h2>Not on the bench</h2>' + UNAVAILABLE.map((u) => `<div class="cap off" title="${esc(u.endpoint)}"><b>${esc(u.title)}</b><small>${esc(u.why)}</small></div>`).join('');
     const p = $('palette');
-    p.innerHTML = h;
-    p.addEventListener('click', (e) => { const b = e.target.closest('button.cap'); if (b) addNode(b.dataset.type); });
+    p.innerHTML = '<div class="pal-head"><b>Add a step</b><button class="p-close" data-act="hide" aria-label="Hide the list of steps">\u00d7</button></div>' + h;
+    p.addEventListener('click', (e) => { if (e.target.closest('[data-act="hide"]')) return setPalette('closed'); const b = e.target.closest('button.cap'); if (b) askToAdd(b.dataset.type); });
     p.addEventListener('dragstart', (e) => { const b = e.target.closest('button.cap'); if (b) e.dataTransfer.setData('text/plain', b.dataset.type); });
     renderFlowMenu();
   }
@@ -951,18 +1368,27 @@
     renderPalette();
     wire();
     applyView();
+    let pal = 'closed';
+    try { pal = localStorage.getItem('arcade-workbench.palette') === 'open' ? 'open' : 'closed'; } catch { /* closed */ }
+    setPalette(pal);
+    renderStart();
+    renderInspector();
     const me = await App.ready;
     LAST = `arcade-workbench.last.${me.user.username}`;
     const banner = (text) => { $('banner').textContent = text; $('banner').hidden = false; };
     const src = me.arcade.source;
     S.cat.hasKey = src !== 'none';
-    $('keyState').dataset.on = String(S.cat.hasKey);
-    $('keyState').textContent = src === 'own' ? 'arcade: your key' : src === 'host' ? 'arcade: host key' : 'no arcade key';
-    if (!S.cat.hasKey) banner('No Arcade key yet. Add yours under Models and keys. You can still lay out a flow and see what Arcade allows.');
+    // No key yet: the small key box opens here, on the bench.
+    if (!S.cat.hasKey) App.connectBox('arcade', { reason: 'Add an Arcade key to run steps. Without one you can still lay out a flow and see what Arcade allows.' });
     else {
       try { S.cat.categories = await App.categories(); S.cat.models = (await arcade('models/list', {})).items || []; }
-      catch (e) { $('keyState').dataset.on = 'false'; $('keyState').textContent = 'key refused'; banner(`Arcade did not accept the request. ${e.message}`); }
+      catch (e) {
+        // Being told to slow down is not a bad key.
+        if (e.status === 429) banner('Arcade is asking for fewer requests right now. Wait a few seconds, then reload the page.');
+        else { App.arcadeRefused = true; App.renderChips(); banner(`Arcade did not accept the request. ${e.message}`); }
+      }
     }
+    renderStart();
     App.onBench.push(() => requestAnimationFrame(() => { if (App.keyChanged) return location.reload(); if (S.needFit) { S.needFit = false; fit(); } refreshAll(); }));
     App.onKeyChange = () => { App.keyChanged = true; };
     try { S.flows = (await App.api('flows')).flows; } catch { S.flows = []; }
@@ -973,10 +1399,10 @@
     // First sign-in: the admin keeps a flow that was built in this browser before accounts existed.
     let old = null;
     try { old = JSON.parse(localStorage.getItem(LEGACY) || 'null'); } catch { /* start fresh */ }
-    if (me.user.role === 'admin' && old?.flow?.nodes?.length) { if (old.view) S.view = old.view; setFlow(old.flow, { keepView: Boolean(old.view) }); applyView(); }
-    else setFlow(fromTemplate(TEMPLATES[0]));
+    if (me.user.role === 'admin' && old?.flow?.nodes?.length) { if (old.view) S.view = old.view; applyView(); setFlow(old.flow, { keepView: Boolean(old.view) }); }
+    else setFlow({ name: 'Untitled flow', nodes: [], edges: [] });
   }
 
-  window.WB = { S, G, NODES, statusOf, checks, whyNot, runTo, runFlow, fork, addNode, connect, setFlow, appendFlow, openFlow, saveNow, fromTemplate, TEMPLATES, fit };
+  window.WB = { S, G, NODES, statusOf, checks, whyNot, runTo, runFlow, fork, addNode, connect, setFlow, appendFlow, openFlow, saveNow, fromTemplate, TEMPLATES, fit, select, setPalette, undo, redo };
   boot();
 })();
